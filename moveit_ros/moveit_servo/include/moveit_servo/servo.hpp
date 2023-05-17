@@ -48,7 +48,7 @@ namespace moveit_servo
     class Servo
     {
         public:
-            Eigen::VectorXf getNextJointState(std::variant<Eigen::VectorXf, Eigen::Isometry3f> command);
+            Eigen::VectorXd getNextJointState(std::variant<Eigen::VectorXd, Eigen::Isometry3d> command);
     };
 
 }

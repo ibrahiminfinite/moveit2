@@ -1,7 +1,7 @@
 /*******************************************************************************
  * BSD 3-Clause License
  *
- * Copyright (c) 2019, Los Alamos National Security, LLC
+ * Copyright (c) 2021, PickNik Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,33 +31,36 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *******************************************************************************/
 
-/*      Title     : servo_inputs.hpp
+/*      Title     : servo_node_main.cpp
  *      Project   : moveit_servo
  *      Created   : 17/05/2023
- *      Author    : Brian O'Neil, Andy Zelenak, Blake Anderson, V Mohammed Ibrahim
+ *      Author    : V Mohammed Ibrahim
  */
 
-
+#include <tf2_eigen/tf2_eigen.hpp>
 #include <moveit_servo/servo.hpp>
 
-namespace moveit_servo
+int main(int argc, char* argv[])
 {
-    Eigen::VectorXd Servo::getNextJointState(std::variant<Eigen::VectorXd, Eigen::Isometry3d> command)
-    {
-        if (std::holds_alternative<Eigen::Isometry3d>(command))
-        {
-            std::cout<<"Got Isometry "<<std::endl;
-        }
-        else if (std::holds_alternative<Eigen::VectorXd>(command))
-        {
-            std::cout<<"Got Vector "<<std::endl;
-        }
-        else
-        {
-            std::cout<<"Got unkown"<<std::endl;
-        }
-        Eigen::VectorXd rvec(2);
-        rvec << 1.0, 1.0;
-        return rvec;
-    }
+  rclcpp::init(argc, argv);
+
+  rclcpp::NodeOptions options;
+
+  auto servo_node = std::make_shared<rclcpp::Node>("servo_node", options);
+
+  rclcpp::WallRate rate(1.0 / 0.2);
+  while(rclcpp::ok())
+  {
+    
+    auto servo = moveit_servo::Servo();
+    auto vec = Eigen::VectorXd(2);
+    vec << 1.0, 1.0;
+    servo.getNextJointState(vec);
+    Eigen::Isometry3d pose;
+    pose.setIdentity();
+    servo.getNextJointState(pose);
+    rate.sleep();
+  }
+
+  rclcpp::shutdown();
 }

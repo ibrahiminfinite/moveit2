@@ -79,9 +79,9 @@ target_link_libraries(moveit_servo_lib moveit_servo_lib_parameters)
 ######################
 
 # An executable node for the servo server
-# add_executable(servo_node_main src/servo_node_main.cpp)
-# target_link_libraries(servo_node_main servo_node)
-# ament_target_dependencies(servo_node_main ${THIS_PACKAGE_INCLUDE_DEPENDS})
+add_executable(servo_node_main src/servo_main.cpp src/servo.cpp)
+# target_link_libraries(servo_node_main moveit_servo_lib)
+ament_target_dependencies(servo_node_main ${THIS_PACKAGE_INCLUDE_DEPENDS})
 
 # An example of pose tracking
 # add_executable(servo_pose_tracking_demo src/cpp_interface_demo/pose_tracking_demo.cpp)
@@ -113,15 +113,13 @@ install(
 )
 
 # Install Binaries
-# install(
-#   TARGETS
-#     servo_node_main
-#     servo_pose_tracking_demo
-#     fake_command_publisher
-#   ARCHIVE DESTINATION lib
-#   LIBRARY DESTINATION lib
-#   RUNTIME DESTINATION lib/moveit_servo
-# )
+install(
+  TARGETS
+    servo_node_main
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/moveit_servo
+)
 
 # Install include, launch, config directories
 install(DIRECTORY include/ DESTINATION include/moveit_servo)
