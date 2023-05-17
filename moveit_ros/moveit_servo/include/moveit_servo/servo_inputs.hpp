@@ -42,5 +42,4 @@
 namespace moveit_servo
 {
 
-
 }

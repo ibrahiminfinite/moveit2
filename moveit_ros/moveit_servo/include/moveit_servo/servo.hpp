@@ -45,10 +45,38 @@
 
 namespace moveit_servo
 {
-    class Servo
-    {
-        public:
-            Eigen::VectorXd getNextJointState(std::variant<Eigen::VectorXd, Eigen::Isometry3d> command);
-    };
 
-}
+typedef Eigen::Isometry3d Pose;
+typedef Eigen::VectorXd JointPosition;
+typedef Eigen::Vector<double, 6> Twist;
+typedef std::variant<JointPosition, Twist, Pose> ServoInput;
+
+enum class ServoCommandType
+{
+  JOINT_POSITION = 0,
+  TWIST,
+  POSE
+};
+
+class Servo
+{
+public:
+  Servo();
+
+  Eigen::MatrixXd getNextJointState(ServoInput command);
+
+  bool incomingCommandType(ServoCommandType command_type);
+  ServoCommandType incomingCommandType();
+
+  Eigen::VectorXd processCommand(ServoInput command);
+  // All 3 of the functions returns a vector containing the next_joint_state
+  Eigen::VectorXd processJointPositionCommand(JointPosition command);
+  Eigen::VectorXd processTwistCommand(Twist command);
+  Eigen::VectorXd processPoseCommand(Pose command);
+
+private:
+  std::mutex command_type_mutex_;
+  ServoCommandType incoming_command_type_;
+};
+
+}  // namespace moveit_servo

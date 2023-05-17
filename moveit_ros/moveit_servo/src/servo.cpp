@@ -37,27 +37,82 @@
  *      Author    : Brian O'Neil, Andy Zelenak, Blake Anderson, V Mohammed Ibrahim
  */
 
-
+#include <rclcpp/rclcpp.hpp>
 #include <moveit_servo/servo.hpp>
 
 namespace moveit_servo
 {
-    Eigen::VectorXd Servo::getNextJointState(std::variant<Eigen::VectorXd, Eigen::Isometry3d> command)
-    {
-        if (std::holds_alternative<Eigen::Isometry3d>(command))
-        {
-            std::cout<<"Got Isometry "<<std::endl;
-        }
-        else if (std::holds_alternative<Eigen::VectorXd>(command))
-        {
-            std::cout<<"Got Vector "<<std::endl;
-        }
-        else
-        {
-            std::cout<<"Got unkown"<<std::endl;
-        }
-        Eigen::VectorXd rvec(2);
-        rvec << 1.0, 1.0;
-        return rvec;
-    }
+Servo::Servo()
+{
 }
+
+Eigen::MatrixXd Servo::getNextJointState(ServoInput command)
+{
+  Eigen::Matrix<double, 3, 2> next_joint_state;
+  next_joint_state.setZero();
+  // next_joint_state.row(0) =
+  processCommand(command);
+
+  return next_joint_state;
+}
+
+Eigen::VectorXd Servo::processCommand(ServoInput command)
+{
+  Eigen::VectorXd next_joint_positions;
+  next_joint_positions.setZero();  // This should be set to current position.
+  if (incomingCommandType() == ServoCommandType::JOINT_POSITION && command.index() == 0)
+  {
+    next_joint_positions = processJointPositionCommand(std::get<JointPosition>(command));
+  }
+  else if (incomingCommandType() == ServoCommandType::TWIST && command.index() == 1)
+  {
+    next_joint_positions = processTwistCommand(std::get<Twist>(command));
+  }
+  else if (incomingCommandType() == ServoCommandType::POSE && command.index() == 2)
+  {
+    next_joint_positions = processPoseCommand(std::get<Pose>(command));
+  }
+  else
+  {
+    // PRINT RCLCPP_ERROR
+  }
+  return next_joint_positions;
+}
+
+Eigen::VectorXd Servo::processPoseCommand(Pose command)
+{
+  std::cout << "Got Pose " << std::endl;
+  Eigen::VectorXd rvec(2);
+  rvec << 1.0, 1.0;
+  return rvec;
+}
+
+Eigen::VectorXd Servo::processTwistCommand(Twist command)
+{
+  std::cout << "Got Twist " << std::endl;
+  Eigen::VectorXd rvec(2);
+  rvec << 1.0, 1.0;
+  return rvec;
+}
+
+Eigen::VectorXd Servo::processJointPositionCommand(JointPosition command)
+{
+  std::cout << "Got Joint Position " << std::endl;
+  Eigen::VectorXd rvec(2);
+  rvec << 1.0, 1.0;
+  return rvec;
+}
+
+ServoCommandType Servo::incomingCommandType()
+{
+  std::lock_guard<std::mutex> lock(command_type_mutex_);
+  return incoming_command_type_;
+}
+
+bool Servo::incomingCommandType(ServoCommandType command_type)
+{
+  std::lock_guard<std::mutex> lock(command_type_mutex_);
+  incoming_command_type_ = command_type;
+  return true;
+}
+}  // namespace moveit_servo

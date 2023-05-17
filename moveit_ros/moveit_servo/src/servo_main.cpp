@@ -47,18 +47,22 @@ int main(int argc, char* argv[])
   rclcpp::NodeOptions options;
 
   auto servo_node = std::make_shared<rclcpp::Node>("servo_node", options);
+  auto servo = moveit_servo::Servo();
 
   rclcpp::WallRate rate(1.0 / 0.2);
-  while(rclcpp::ok())
+  while (rclcpp::ok())
   {
-    
-    auto servo = moveit_servo::Servo();
-    auto vec = Eigen::VectorXd(2);
+    servo.incomingCommandType(moveit_servo::ServoCommandType::JOINT_POSITION);
+    moveit_servo::JointPosition vec(2);
     vec << 1.0, 1.0;
     servo.getNextJointState(vec);
-    Eigen::Isometry3d pose;
+    servo.incomingCommandType(moveit_servo::ServoCommandType::POSE);
+    moveit_servo::Pose pose;
     pose.setIdentity();
     servo.getNextJointState(pose);
+    servo.incomingCommandType(moveit_servo::ServoCommandType::TWIST);
+    moveit_servo::Twist twist = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    servo.getNextJointState(twist);
     rate.sleep();
   }
 
