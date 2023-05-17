@@ -47,9 +47,9 @@ namespace moveit_servo
 {
 
 typedef Eigen::Isometry3d Pose;
-typedef Eigen::VectorXd JointPosition;
+typedef Eigen::VectorXd JointVelocity;
 typedef Eigen::Vector<double, 6> Twist;
-typedef std::variant<JointPosition, Twist, Pose> ServoInput;
+typedef std::variant<JointVelocity, Twist, Pose> ServoInput;
 
 enum class ServoCommandType
 {
@@ -69,10 +69,9 @@ public:
   ServoCommandType incomingCommandType();
 
   Eigen::VectorXd processCommand(ServoInput command);
-  // All 3 of the functions returns a vector containing the next_joint_state
-  Eigen::VectorXd processJointPositionCommand(JointPosition command);
-  Eigen::VectorXd processTwistCommand(Twist command);
-  Eigen::VectorXd processPoseCommand(Pose command);
+  Eigen::VectorXd processCommand(JointVelocity command);
+  Eigen::VectorXd processCommand(Twist command);
+  Eigen::VectorXd processCommand(Pose command);
 
 private:
   std::mutex command_type_mutex_;

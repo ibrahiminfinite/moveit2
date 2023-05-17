@@ -39,6 +39,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <moveit_servo/servo.hpp>
+#include <moveit_servo/utils.hpp>
 
 namespace moveit_servo
 {
@@ -46,12 +47,11 @@ Servo::Servo()
 {
 }
 
-Eigen::MatrixXd Servo::getNextJointState(ServoInput command)
+Eigen::MatrixXd Servo::getNextJointState(moveit_servo::ServoInput command)
 {
   Eigen::Matrix<double, 3, 2> next_joint_state;
   next_joint_state.setZero();
-  // next_joint_state.row(0) =
-  processCommand(command);
+  next_joint_state.row(0) = processCommand(command);
 
   return next_joint_state;
 }
@@ -62,15 +62,15 @@ Eigen::VectorXd Servo::processCommand(ServoInput command)
   next_joint_positions.setZero();  // This should be set to current position.
   if (incomingCommandType() == ServoCommandType::JOINT_POSITION && command.index() == 0)
   {
-    next_joint_positions = processJointPositionCommand(std::get<JointPosition>(command));
+    next_joint_positions = processCommand(std::get<JointVelocity>(command));
   }
   else if (incomingCommandType() == ServoCommandType::TWIST && command.index() == 1)
   {
-    next_joint_positions = processTwistCommand(std::get<Twist>(command));
+    next_joint_positions = processCommand(std::get<Twist>(command));
   }
   else if (incomingCommandType() == ServoCommandType::POSE && command.index() == 2)
   {
-    next_joint_positions = processPoseCommand(std::get<Pose>(command));
+    next_joint_positions = processCommand(std::get<Pose>(command));
   }
   else
   {
@@ -79,7 +79,7 @@ Eigen::VectorXd Servo::processCommand(ServoInput command)
   return next_joint_positions;
 }
 
-Eigen::VectorXd Servo::processPoseCommand(Pose command)
+Eigen::VectorXd Servo::processCommand(Pose command)
 {
   std::cout << "Got Pose " << std::endl;
   Eigen::VectorXd rvec(2);
@@ -87,7 +87,7 @@ Eigen::VectorXd Servo::processPoseCommand(Pose command)
   return rvec;
 }
 
-Eigen::VectorXd Servo::processTwistCommand(Twist command)
+Eigen::VectorXd Servo::processCommand(Twist command)
 {
   std::cout << "Got Twist " << std::endl;
   Eigen::VectorXd rvec(2);
@@ -95,9 +95,13 @@ Eigen::VectorXd Servo::processTwistCommand(Twist command)
   return rvec;
 }
 
-Eigen::VectorXd Servo::processJointPositionCommand(JointPosition command)
+Eigen::VectorXd Servo::processCommand(JointVelocity command)
 {
   std::cout << "Got Joint Position " << std::endl;
+  if (isValidCommand(command))
+  {
+    std::cout << "Valid " << std::endl;
+  }
   Eigen::VectorXd rvec(2);
   rvec << 1.0, 1.0;
   return rvec;

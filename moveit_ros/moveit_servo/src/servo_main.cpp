@@ -53,15 +53,15 @@ int main(int argc, char* argv[])
   while (rclcpp::ok())
   {
     servo.incomingCommandType(moveit_servo::ServoCommandType::JOINT_POSITION);
-    moveit_servo::JointPosition vec(2);
-    vec << 1.0, 1.0;
+    moveit_servo::JointVelocity vec(2);
+    vec << 1.0, std::nan("NaN");
     servo.getNextJointState(vec);
     servo.incomingCommandType(moveit_servo::ServoCommandType::POSE);
     moveit_servo::Pose pose;
     pose.setIdentity();
     servo.getNextJointState(pose);
     servo.incomingCommandType(moveit_servo::ServoCommandType::TWIST);
-    moveit_servo::Twist twist = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    moveit_servo::Twist twist = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
     servo.getNextJointState(twist);
     rate.sleep();
   }
