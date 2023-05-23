@@ -40,18 +40,29 @@
 #pragma once
 
 #include <variant>
-
 #include <tf2_eigen/tf2_eigen.hpp>
+#include <moveit/kinematics_base/kinematics_base.h>
+#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
+#include <moveit_servo_lib_parameters.hpp>
 
 namespace moveit_servo
 {
+
+// Datatypes used by servo
 
 typedef Eigen::Isometry3d Pose;
 typedef Eigen::VectorXd JointVelocity;
 typedef Eigen::Vector<double, 6> Twist;
 typedef std::variant<JointVelocity, Twist, Pose> ServoInput;
 
-enum class ServoCommandType
+struct RobotJointState
+{
+  Eigen::VectorXd positions;
+  Eigen::VectorXd velocities;
+  Eigen::VectorXd accelerations;
+};
+
+enum class CommandType
 {
   JOINT_POSITION = 0,
   TWIST,
@@ -61,21 +72,35 @@ enum class ServoCommandType
 class Servo
 {
 public:
-  Servo();
+  Servo(const rclcpp::Node::SharedPtr& node);
 
-  Eigen::MatrixXd getNextJointState(ServoInput command);
+  RobotJointState getNextJointState(const ServoInput& command);
 
-  bool incomingCommandType(ServoCommandType command_type);
-  ServoCommandType incomingCommandType();
+  bool incomingCommandType(const CommandType& command_type);
+  CommandType incomingCommandType();
 
-  Eigen::VectorXd processCommand(ServoInput command);
-  Eigen::VectorXd processCommand(JointVelocity command);
-  Eigen::VectorXd processCommand(Twist command);
-  Eigen::VectorXd processCommand(Pose command);
+  Eigen::VectorXd processCommand(const ServoInput& command);
+  Eigen::VectorXd processCommand(const JointVelocity& command);
+  Eigen::VectorXd processCommand(const Twist& command);
+  Eigen::VectorXd processCommand(const Pose& command);
+
+  void validateParams(const servo::Params& servo_params);
+  void createPlanningSceneMonitor();
+  void setIKSolver();
 
 private:
+  rclcpp::Node::SharedPtr node_;
+
   std::mutex command_type_mutex_;
-  ServoCommandType incoming_command_type_;
+  CommandType incoming_command_type_;
+
+  servo::Params servo_params_;
+  std::shared_ptr<servo::ParamListener> servo_param_listener_;
+
+  moveit::core::RobotStatePtr current_state_;
+  const moveit::core::JointModelGroup* joint_model_group_;
+  kinematics::KinematicsBaseConstPtr ik_solver_ = nullptr;
+  planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
 };
 
 }  // namespace moveit_servo

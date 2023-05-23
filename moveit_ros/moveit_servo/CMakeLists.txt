@@ -79,7 +79,7 @@ target_link_libraries(moveit_servo_lib moveit_servo_lib_parameters)
 
 # An executable node for the servo server
 add_executable(servo_node_main src/servo_main.cpp src/servo.cpp src/utils.cpp)
-# target_link_libraries(servo_node_main moveit_servo_lib)
+target_link_libraries(servo_node_main moveit_servo_lib_parameters)
 ament_target_dependencies(servo_node_main ${THIS_PACKAGE_INCLUDE_DEPENDS})
 
 # An example of pose tracking
