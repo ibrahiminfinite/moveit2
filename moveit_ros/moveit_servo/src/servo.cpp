@@ -52,29 +52,7 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node) : node_(node)
   servo_param_listener_ = std::make_shared<servo::ParamListener>(node_, param_namespace);
   servo_params_ = servo_param_listener_->get_params();
   validateParams(servo_params_);
-
-  // Can set robot_description name from parameters
-  std::string robot_description_name = "robot_description";
-  node_->get_parameter_or("robot_description_name", robot_description_name, robot_description_name);
-  // Set up planning_scene_monitor
-  planning_scene_monitor_ = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(
-      node_, robot_description_name, "planning_scene_monitor");
-  planning_scene_monitor_->startStateMonitor(servo_params_.joint_topic);
-  planning_scene_monitor_->startSceneMonitor(servo_params_.monitored_planning_scene_topic);
-  planning_scene_monitor_->setPlanningScenePublishingFrequency(25);
-  planning_scene_monitor_->getStateMonitor()->enableCopyDynamics(true);
-  planning_scene_monitor_->startPublishingPlanningScene(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE,
-                                                        std::string(node_->get_fully_qualified_name()) +
-                                                            "/publish_planning_scene");
-  if (servo_params_.is_primary_planning_scene_monitor)
-  {
-    planning_scene_monitor_->providePlanningSceneService();
-  }
-  else
-  {
-    planning_scene_monitor_->requestPlanningSceneState();
-  }
-
+  createPlanningSceneMonitor();
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   auto joint_model_group_ = current_state_->getJointModelGroup(servo_params_.move_group_name);
   if (joint_model_group_ == nullptr)
@@ -101,6 +79,31 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node) : node_(node)
   }
 
   RCLCPP_INFO_STREAM(LOGGER, "SERVO : Initialized");
+}
+
+void Servo::createPlanningSceneMonitor()
+{
+  // Can set robot_description name from parameters
+  std::string robot_description_name = "robot_description";
+  node_->get_parameter_or("robot_description_name", robot_description_name, robot_description_name);
+  // Set up planning_scene_monitor
+  planning_scene_monitor_ = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(
+      node_, robot_description_name, "planning_scene_monitor");
+  planning_scene_monitor_->startStateMonitor(servo_params_.joint_topic);
+  planning_scene_monitor_->startSceneMonitor(servo_params_.monitored_planning_scene_topic);
+  planning_scene_monitor_->setPlanningScenePublishingFrequency(25);
+  planning_scene_monitor_->getStateMonitor()->enableCopyDynamics(true);
+  planning_scene_monitor_->startPublishingPlanningScene(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE,
+                                                        std::string(node_->get_fully_qualified_name()) +
+                                                            "/publish_planning_scene");
+  if (servo_params_.is_primary_planning_scene_monitor)
+  {
+    planning_scene_monitor_->providePlanningSceneService();
+  }
+  else
+  {
+    planning_scene_monitor_->requestPlanningSceneState();
+  }
 }
 
 RobotJointState Servo::getNextJointState(const ServoInput& command)
