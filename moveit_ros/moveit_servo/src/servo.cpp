@@ -196,7 +196,16 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
     // Compute the cartesian position delta based on incoming command
     cartesian_position_delta = transformed_twist.velocities * servo_params_.publish_period;
 
-    return joint_poition_delta;
+    // Use IK to get joint position
+    Eigen::MatrixXd jacobian = current_state_->getJacobian(joint_model_group_);
+
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd =
+        Eigen::JacobiSVD<Eigen::MatrixXd>(jacobian, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    Eigen::MatrixXd matrix_s = svd.singularValues().asDiagonal();
+    Eigen::MatrixXd pseudo_inverse = svd.matrixV() * matrix_s.inverse() * svd.matrixU().transpose();
+
+    // use inverse Jacobian
+    joint_poition_delta = pseudo_inverse * cartesian_position_delta;
   }
 
   return joint_poition_delta;
