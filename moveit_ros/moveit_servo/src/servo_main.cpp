@@ -61,8 +61,7 @@ int main(int argc, char* argv[])
     pose.setIdentity();
     servo.getNextJointState(pose);
     servo.incomingCommandType(moveit_servo::CommandType::TWIST);
-    const std::string frame = "panda_link8";
-    moveit_servo::Twist twist{ frame, { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 } };
+    moveit_servo::Twist twist{ "panda_link8", { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 } };
     servo.getNextJointState(twist);
     rate.sleep();
   }

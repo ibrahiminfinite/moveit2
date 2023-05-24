@@ -165,27 +165,30 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
   Eigen::VectorXd joint_poition_delta;
   Eigen::VectorXd cartesian_position_delta;
 
+  std::string command_frame = command.frame_id;
+  const std::string planning_frame = servo_params_.planning_frame;
+
   if (isValidCommand(command.velocities))
   {
     Twist transformed_twist = command;
 
-    if (command.frame_id.empty())
+    if (command_frame.empty())
     {
       RCLCPP_WARN_STREAM(LOGGER,
                          "No frame specified for command, will use planning_frame: " << servo_params_.planning_frame);
-      command.frame_id = servo_params_.planning_frame;
+      command_frame = planning_frame;
     }
     // Transform the command to the MoveGroup planning frame
-    if (command.frame_id != servo_params_.planning_frame)
+    if (command.frame_id != planning_frame)
     {
       // We solve (planning_frame -> base -> cmd.header.frame_id)
       // by computing (base->planning_frame)^-1 * (base->cmd.header.frame_id)
       const Eigen::Isometry3d planning_frame_transfrom =
-          current_state_->getGlobalLinkTransform(command.frame_id).inverse() *
-          current_state_->getGlobalLinkTransform(servo_params_.planning_frame);
+          current_state_->getGlobalLinkTransform(command_frame).inverse() *
+          current_state_->getGlobalLinkTransform(planning_frame);
 
       // Apply the transformation to the command vector
-      transformed_twist.frame_id = servo_params_.planning_frame;
+      transformed_twist.frame_id = planning_frame;
       transformed_twist.velocities.head<3>() = planning_frame_transfrom.linear() * command.velocities.head<3>();
       transformed_twist.velocities.tail<3>() = planning_frame_transfrom.linear() * command.velocities.tail<3>();
     }

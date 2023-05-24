@@ -54,9 +54,10 @@ typedef Eigen::Isometry3d Pose;
 typedef Eigen::VectorXd JointVelocity;
 struct Twist
 {
-  std::string& frame_id;
+  std::string frame_id;
   Eigen::Vector<double, 6> velocities;
 };
+
 typedef std::variant<JointVelocity, Twist, Pose> ServoInput;
 
 struct RobotJointState
