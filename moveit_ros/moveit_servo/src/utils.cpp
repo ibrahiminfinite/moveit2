@@ -7,11 +7,12 @@ namespace moveit_servo
 bool isValidCommand(Eigen::VectorXd command)
 {
   bool isValid = true;
-  for (const double& velocity : command)
+  for (const double& val : command)
   {
-    if (std::isnan(velocity))
+    if (std::isnan(val))
     {
       isValid = false;
+      break;
     }
   }
   return isValid;

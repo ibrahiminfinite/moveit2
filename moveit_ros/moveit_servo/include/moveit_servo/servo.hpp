@@ -52,7 +52,11 @@ namespace moveit_servo
 
 typedef Eigen::Isometry3d Pose;
 typedef Eigen::VectorXd JointVelocity;
-typedef Eigen::Vector<double, 6> Twist;
+struct Twist
+{
+  std::string& frame_id;
+  Eigen::Vector<double, 6> velocities;
+};
 typedef std::variant<JointVelocity, Twist, Pose> ServoInput;
 
 struct RobotJointState
@@ -79,10 +83,10 @@ public:
   bool incomingCommandType(const CommandType& command_type);
   CommandType incomingCommandType();
 
-  Eigen::VectorXd processCommand(const ServoInput& command);
-  Eigen::VectorXd processCommand(const JointVelocity& command);
-  Eigen::VectorXd processCommand(const Twist& command);
-  Eigen::VectorXd processCommand(const Pose& command);
+  Eigen::VectorXd jointDeltaFromCommand(const ServoInput& command);
+  Eigen::VectorXd jointDeltaFromCommand(const JointVelocity& command);
+  Eigen::VectorXd jointDeltaFromCommand(const Twist& command);
+  Eigen::VectorXd jointDeltaFromCommand(const Pose& command);
 
   void validateParams(const servo::Params& servo_params);
   void createPlanningSceneMonitor();

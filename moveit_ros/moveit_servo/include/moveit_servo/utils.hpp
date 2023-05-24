@@ -6,4 +6,5 @@
 namespace moveit_servo
 {
 bool isValidCommand(Eigen::VectorXd command);
+
 }  // namespace moveit_servo

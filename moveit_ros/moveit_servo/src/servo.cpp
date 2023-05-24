@@ -51,32 +51,20 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node) : node_(node)
   std::string param_namespace = "moveit_servo";
   servo_param_listener_ = std::make_shared<servo::ParamListener>(node_, param_namespace);
   servo_params_ = servo_param_listener_->get_params();
+
   validateParams(servo_params_);
+
   createPlanningSceneMonitor();
+
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
-  auto joint_model_group_ = current_state_->getJointModelGroup(servo_params_.move_group_name);
+  joint_model_group_ = current_state_->getJointModelGroup(servo_params_.move_group_name);
   if (joint_model_group_ == nullptr)
   {
     RCLCPP_ERROR_STREAM(LOGGER, "Invalid move group name: `" << servo_params_.move_group_name << '`');
     throw std::runtime_error("Invalid move group name");
   }
-  // Get the IK solver for the group
-  ik_solver_ = joint_model_group_->getSolverInstance();
-  if (!ik_solver_)
-  {
-    RCLCPP_WARN(
-        LOGGER,
-        "No kinematics solver instantiated for group '%s'. Will use inverse Jacobian for servo calculations instead.",
-        joint_model_group_->getName().c_str());
-  }
-  else if (!ik_solver_->supportsGroup(joint_model_group_))
-  {
-    ik_solver_ = nullptr;
-    RCLCPP_WARN(LOGGER,
-                "The loaded kinematics plugin does not support group '%s'. Will use inverse Jacobian for servo "
-                "calculations instead.",
-                joint_model_group_->getName().c_str());
-  }
+
+  setIKSolver();
 
   RCLCPP_INFO_STREAM(LOGGER, "SERVO : Initialized");
 }
@@ -106,17 +94,40 @@ void Servo::createPlanningSceneMonitor()
   }
 }
 
+void Servo::setIKSolver()
+{
+  // Get the IK solver for the group
+  ik_solver_ = joint_model_group_->getSolverInstance();
+  if (!ik_solver_)
+  {
+    RCLCPP_WARN(
+        LOGGER,
+        "No kinematics solver instantiated for group '%s'. Will use inverse Jacobian for servo calculations instead.",
+        joint_model_group_->getName().c_str());
+  }
+  else if (!ik_solver_->supportsGroup(joint_model_group_))
+  {
+    ik_solver_ = nullptr;
+    RCLCPP_WARN(LOGGER,
+                "The loaded kinematics plugin does not support group '%s'. Will use inverse Jacobian for servo "
+                "calculations instead.",
+                joint_model_group_->getName().c_str());
+  }
+}
+
 RobotJointState Servo::getNextJointState(const ServoInput& command)
 {
   RobotJointState next_joint_state;
-  next_joint_state.positions.setZero();
-  next_joint_state.velocities.setZero();
-  next_joint_state.accelerations.setZero();
-  processCommand(command);
+  // Compute the change in joint position due to the incoming command
+  Eigen::VectorXd joint_position_delta = jointDeltaFromCommand(command);
+  // Apply collision scaling to the delta
+  // Compute the next joint positions and apply smoother (should probably be applied to velicity instead)
+  // Compute the next joint velocities
+  // Enforce joint velocity and position limits
   return next_joint_state;
 }
 
-Eigen::VectorXd Servo::processCommand(const ServoInput& command)
+Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
 {
   Eigen::VectorXd next_joint_positions;
   next_joint_positions.setZero();  // This should be set to current position.
@@ -125,15 +136,15 @@ Eigen::VectorXd Servo::processCommand(const ServoInput& command)
 
   if (incomingType == CommandType::JOINT_POSITION && command.index() == 0)
   {
-    next_joint_positions = processCommand(std::get<JointVelocity>(command));
+    next_joint_positions = jointDeltaFromCommand(std::get<JointVelocity>(command));
   }
   else if (incomingType == CommandType::TWIST && command.index() == 1)
   {
-    next_joint_positions = processCommand(std::get<Twist>(command));
+    next_joint_positions = jointDeltaFromCommand(std::get<Twist>(command));
   }
   else if (incomingType == CommandType::POSE && command.index() == 2)
   {
-    next_joint_positions = processCommand(std::get<Pose>(command));
+    next_joint_positions = jointDeltaFromCommand(std::get<Pose>(command));
   }
   else
   {
@@ -142,29 +153,65 @@ Eigen::VectorXd Servo::processCommand(const ServoInput& command)
   return next_joint_positions;
 }
 
-Eigen::VectorXd Servo::processCommand(const Pose& command)
+Eigen::VectorXd Servo::jointDeltaFromCommand(const Pose& command)
 {
   Eigen::VectorXd rvec(2);
   rvec << 1.0, 1.0;
   return rvec;
 }
 
-Eigen::VectorXd Servo::processCommand(const Twist& command)
+Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
 {
-  Eigen::VectorXd rvec(2);
-  rvec << 1.0, 1.0;
-  return rvec;
+  Eigen::VectorXd joint_poition_delta;
+  Eigen::VectorXd cartesian_position_delta;
+
+  if (isValidCommand(command.velocities))
+  {
+    Twist transformed_twist = command;
+
+    if (command.frame_id.empty())
+    {
+      RCLCPP_WARN_STREAM(LOGGER,
+                         "No frame specified for command, will use planning_frame: " << servo_params_.planning_frame);
+      command.frame_id = servo_params_.planning_frame;
+    }
+    // Transform the command to the MoveGroup planning frame
+    if (command.frame_id != servo_params_.planning_frame)
+    {
+      // We solve (planning_frame -> base -> cmd.header.frame_id)
+      // by computing (base->planning_frame)^-1 * (base->cmd.header.frame_id)
+      const Eigen::Isometry3d planning_frame_transfrom =
+          current_state_->getGlobalLinkTransform(command.frame_id).inverse() *
+          current_state_->getGlobalLinkTransform(servo_params_.planning_frame);
+
+      // Apply the transformation to the command vector
+      transformed_twist.frame_id = servo_params_.planning_frame;
+      transformed_twist.velocities.head<3>() = planning_frame_transfrom.linear() * command.velocities.head<3>();
+      transformed_twist.velocities.tail<3>() = planning_frame_transfrom.linear() * command.velocities.tail<3>();
+    }
+
+    // Compute the cartesian position delta based on incoming command
+    cartesian_position_delta = transformed_twist.velocities * servo_params_.publish_period;
+
+    return joint_poition_delta;
+  }
+
+  return joint_poition_delta;
 }
 
-Eigen::VectorXd Servo::processCommand(const JointVelocity& command)
+Eigen::VectorXd Servo::jointDeltaFromCommand(const JointVelocity& command)
 {
+  // Find the target joint position based on the commanded joint velocity
+  Eigen::VectorXd joint_poition_delta;
   if (isValidCommand(command))
   {
-    std::cout << "Valid " << std::endl;
+    joint_poition_delta = command * servo_params_.publish_period;
   }
-  Eigen::VectorXd rvec(2);
-  rvec << 1.0, 1.0;
-  return rvec;
+  else
+  {
+    RCLCPP_WARN_STREAM(LOGGER, " SERVO : Invalid joint velocity command");
+  }
+  return joint_poition_delta;
 }
 
 CommandType Servo::incomingCommandType()
