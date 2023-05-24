@@ -44,6 +44,7 @@
 #include <moveit/kinematics_base/kinematics_base.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit_servo_lib_parameters.hpp>
+#include <moveit_servo/collision_monitor.hpp>
 
 namespace moveit_servo
 {
@@ -94,18 +95,20 @@ public:
   void setIKSolver();
 
 private:
-  rclcpp::Node::SharedPtr node_;
+  const rclcpp::Node::SharedPtr node_;
 
   std::mutex command_type_mutex_;
   CommandType incoming_command_type_;
 
   servo::Params servo_params_;
-  std::shared_ptr<servo::ParamListener> servo_param_listener_;
+  std::shared_ptr<const servo::ParamListener> servo_param_listener_;
 
   moveit::core::RobotStatePtr current_state_;
   const moveit::core::JointModelGroup* joint_model_group_;
   kinematics::KinematicsBaseConstPtr ik_solver_ = nullptr;
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
+
+  std::unique_ptr<CollisionCheck> collision_checker_;
 };
 
 }  // namespace moveit_servo

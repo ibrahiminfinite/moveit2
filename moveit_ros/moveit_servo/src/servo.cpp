@@ -49,12 +49,17 @@ static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.servo");
 Servo::Servo(const rclcpp::Node::SharedPtr& node) : node_(node)
 {
   std::string param_namespace = "moveit_servo";
-  servo_param_listener_ = std::make_shared<servo::ParamListener>(node_, param_namespace);
+  servo_param_listener_ = std::make_shared<const servo::ParamListener>(node_, param_namespace);
   servo_params_ = servo_param_listener_->get_params();
 
   validateParams(servo_params_);
 
   createPlanningSceneMonitor();
+
+  // Create the collision checker
+  collision_checker_ = std::make_unique<CollisionCheck>(node_, planning_scene_monitor_, servo_param_listener_);
+  if (servo_params_.check_collisions)
+    collision_checker_->start();
 
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   joint_model_group_ = current_state_->getJointModelGroup(servo_params_.move_group_name);
@@ -204,7 +209,7 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
     Eigen::MatrixXd matrix_s = svd.singularValues().asDiagonal();
     Eigen::MatrixXd pseudo_inverse = svd.matrixV() * matrix_s.inverse() * svd.matrixU().transpose();
 
-    // use inverse Jacobian
+    // use inverse Jacobian , add IK solver here
     joint_poition_delta = pseudo_inverse * cartesian_position_delta;
   }
 
