@@ -76,6 +76,8 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node) : node_(node)
   num_joints_ = current_joint_state_.name.size();
   current_joint_state_.position.resize(num_joints_);
   current_joint_state_.velocity.resize(num_joints_);
+  next_joint_state_.position.resize(num_joints_);
+  next_joint_state_.velocity.resize(num_joints_);
   current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state_.position);
   current_state_->copyJointGroupVelocities(joint_model_group_, current_joint_state_.velocity);
   // set previous state to same as current state for t = 0
@@ -136,14 +138,18 @@ RobotJointState Servo::getNextJointState(const ServoInput& command)
 
   // Compute the change in joint position due to the incoming command
   Eigen::VectorXd joint_position_delta = jointDeltaFromCommand(command);
-  next_joint_state_ = current_joint_state_;
+
+  // Update current state as reported by planning scene monitor
+  current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
+  current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state_.position);
+  current_state_->copyJointGroupVelocities(joint_model_group_, current_joint_state_.velocity);
 
   // TODO : Apply collision scaling to the delta
 
   // Compute the next joint positions and velocities
   for (size_t i = 0; i < num_joints_; i++)
   {
-    next_joint_state_.position[i] += joint_position_delta[i];
+    next_joint_state_.position[i] = current_joint_state_[i] + joint_position_delta[i];
     next_joint_state_.velocity[i] =
         (next_joint_state_.position[i] - previous_joint_state_.position[i]) / (2 * servo_params_.publish_period);
   }
