@@ -312,13 +312,11 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const JointVelocity& command)
 
 CommandType Servo::incomingCommandType()
 {
-  std::lock_guard<std::mutex> lock(command_type_mutex_);
   return incoming_command_type_;
 }
 
 bool Servo::incomingCommandType(const CommandType& command_type)
 {
-  std::lock_guard<std::mutex> lock(command_type_mutex_);
   incoming_command_type_ = command_type;
   return true;
 }

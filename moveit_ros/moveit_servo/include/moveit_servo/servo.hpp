@@ -104,9 +104,8 @@ public:
 
 private:
   const rclcpp::Node::SharedPtr node_;
-
-  std::mutex command_type_mutex_;
-  CommandType incoming_command_type_;
+  
+  std::atomic<CommandType> incoming_command_type_;
 
   servo::Params servo_params_;
   std::shared_ptr<const servo::ParamListener> servo_param_listener_;
