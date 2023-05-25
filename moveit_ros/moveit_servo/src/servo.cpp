@@ -213,15 +213,14 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Pose& command)
   Eigen::VectorXd joint_poition_delta(num_joints_);
   joint_poition_delta.setZero();
 
-  // To hold the difference in pose
-  Eigen::Isometry3d pose_delta;
-
   Eigen::Isometry3d tf_planning_to_ee_frame, tf_planning_to_cmd_frame;
   tf_planning_to_ee_frame.setIdentity();
   tf_planning_to_cmd_frame.setIdentity();
 
-  // Get the transform from MoveIt planning frame to servoing command frame
-  // Calculate this transform to ensure it is available via C++ API
+  // The commanded pose is in some command frame which may or may not be attached to the robot,
+  // The pose we can control is the end-effector pose
+  // We need to find both the commanded pose and end-effector pose in planning_frame
+
   // We solve (planning_frame -> base -> robot_link_command_frame)
   // by computing (base->planning_frame)^-1 * (base->robot_link_command_frame)
   tf_planning_to_cmd_frame = current_state_->getGlobalLinkTransform(servo_params_.planning_frame).inverse() *
@@ -232,11 +231,11 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Pose& command)
   tf_planning_to_ee_frame = current_state_->getGlobalLinkTransform(servo_params_.planning_frame).inverse() *
                             current_state_->getGlobalLinkTransform(servo_params_.ee_frame_name);
 
-  // Command is in command.frame_id, we need the pose to be in planning_frame
-  // We need a transform from command.frame_id to planning_frame, and then apply it to the pose.
+  // Transform commanded pose to planning frame
   Eigen::Isometry3d transformed_pose = tf_planning_to_cmd_frame * command.pose;
 
   // TODO : Compute the linear and angular difference between the commanded and current pose
+  Eigen::Isometry3d pose_delta = tf_planning_to_ee_frame.inverse() * transformed_pose;
   // TODO : Compute the velocity needed to cover the distance in interval given by publish_period
   // TODO : Call jointDeltaFromCommand() with a Twist containing the velocities
 
