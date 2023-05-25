@@ -56,13 +56,17 @@ int main(int argc, char* argv[])
     moveit_servo::JointVelocity vec(2);
     vec << 1.0, 2.0;  // std::nan("NaN");
     servo.getNextJointState(vec);
+
     servo.incomingCommandType(moveit_servo::CommandType::POSE);
-    moveit_servo::Pose pose;
-    pose.setIdentity();
-    servo.getNextJointState(pose);
+    Eigen::Isometry3d cmd_pose;
+    cmd_pose.setIdentity();
+    moveit_servo::Pose ee_pose{ "panda_link8", cmd_pose };
+    servo.getNextJointState(ee_pose);
+
     servo.incomingCommandType(moveit_servo::CommandType::TWIST);
     moveit_servo::Twist twist{ "panda_link8", { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 } };
     servo.getNextJointState(twist);
+
     rate.sleep();
   }
 

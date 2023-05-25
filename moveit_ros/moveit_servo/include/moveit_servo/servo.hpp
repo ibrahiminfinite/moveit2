@@ -59,8 +59,14 @@ namespace moveit_servo
 
 // Datatypes used by servo
 
-typedef Eigen::Isometry3d Pose;
 typedef Eigen::VectorXd JointVelocity;
+
+struct Pose
+{
+  std::string frame_id;
+  Eigen::Isometry3d pose;
+};
+
 struct Twist
 {
   std::string frame_id;
