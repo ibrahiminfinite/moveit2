@@ -45,6 +45,7 @@
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit_servo_lib_parameters.hpp>
 #include <moveit_servo/collision_monitor.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
 
 namespace moveit_servo
 {
@@ -109,6 +110,13 @@ private:
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
 
   std::unique_ptr<CollisionCheck> collision_checker_;
+
+  size_t num_joints_;
+  // These variables are mutex protected
+  // previous_joint_state holds the state q(t - dt)
+  // current_joint_state holds the  state q(t) as retrieved from the planning scene monitor.
+  // next_joint_state holds the computed state q(t + dt)
+  sensor_msgs::msg::JointState previous_joint_state_, current_joint_state_, next_joint_state_;
 };
 
 }  // namespace moveit_servo

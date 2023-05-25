@@ -54,7 +54,7 @@ int main(int argc, char* argv[])
   {
     servo.incomingCommandType(moveit_servo::CommandType::JOINT_POSITION);
     moveit_servo::JointVelocity vec(2);
-    vec << 1.0, std::nan("NaN");
+    vec << 1.0, 2.0;  // std::nan("NaN");
     servo.getNextJointState(vec);
     servo.incomingCommandType(moveit_servo::CommandType::POSE);
     moveit_servo::Pose pose;
