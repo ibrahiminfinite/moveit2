@@ -63,6 +63,7 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node) : node_(node)
 
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   joint_model_group_ = current_state_->getJointModelGroup(servo_params_.move_group_name);
+  num_joints_ = joint_model_group_->getActiveJointModelNames().size();
   if (joint_model_group_ == nullptr)
   {
     RCLCPP_ERROR_STREAM(LOGGER, "Invalid move group name: `" << servo_params_.move_group_name << '`');
@@ -70,18 +71,6 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node) : node_(node)
   }
 
   setIKSolver();
-
-  // update the joint state
-  current_joint_state_.name = joint_model_group_->getActiveJointModelNames();
-  num_joints_ = current_joint_state_.name.size();
-  current_joint_state_.position.resize(num_joints_);
-  current_joint_state_.velocity.resize(num_joints_);
-  next_joint_state_.position.resize(num_joints_);
-  next_joint_state_.velocity.resize(num_joints_);
-  current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state_.position);
-  current_state_->copyJointGroupVelocities(joint_model_group_, current_joint_state_.velocity);
-  // set previous state to same as current state for t = 0
-  previous_joint_state_ = current_joint_state_;
 
   RCLCPP_INFO_STREAM(LOGGER, "SERVO : Initialized");
 }
@@ -132,35 +121,39 @@ void Servo::setIKSolver()
   }
 }
 
-RobotJointState Servo::getNextJointState(const ServoInput& command)
+sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
 {
-  RobotJointState target_joint_state;
-
   // Compute the change in joint position due to the incoming command
   Eigen::VectorXd joint_position_delta = jointDeltaFromCommand(command);
 
-  // Update current state as reported by planning scene monitor
+  sensor_msgs::msg::JointState current_joint_state, next_joint_state;
+  // Update current joint positions as reported by planning scene monitor
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
-  current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state_.position);
-  current_state_->copyJointGroupVelocities(joint_model_group_, current_joint_state_.velocity);
+  current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state.position);
+  next_joint_state.position.resize(num_joints_);
+  next_joint_state.velocity.resize(num_joints_);
 
   // TODO : Apply collision scaling to the delta
 
-  // Compute the next joint positions and velocities
+  // Compute the next joint positions based on the joint position deltas
   for (size_t i = 0; i < num_joints_; i++)
   {
-    next_joint_state_.position[i] = current_joint_state_[i] + joint_position_delta[i];
-    next_joint_state_.velocity[i] =
-        (next_joint_state_.position[i] - previous_joint_state_.position[i]) / (2 * servo_params_.publish_period);
+    next_joint_state.position[i] = current_joint_state.position[i] + joint_position_delta[i];
   }
 
-  // TODO : Apply smoother to the velocities (what if onlt positions are being used)
+  // TODO : Apply smoother to the positions
+
+  // Compute velocities based on smoothed joint positions
+  for (size_t i = 0; i < num_joints_; i++)
+  {
+    next_joint_state.velocity[i] =
+        (next_joint_state.position[i] - current_joint_state.position[i]) / servo_params_.publish_period;
+  }
+
   // TODO : Enforce joint velocity and position limits
   // TODO : Apply halting procedure if any joints need to be halted.
 
-  // Update the previous state value with that of the current state
-  previous_joint_state_ = current_joint_state_;
-  return target_joint_state;
+  return next_joint_state;
 }
 
 Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)

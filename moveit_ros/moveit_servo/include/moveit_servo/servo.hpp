@@ -62,13 +62,6 @@ struct Twist
 
 typedef std::variant<JointVelocity, Twist, Pose> ServoInput;
 
-struct RobotJointState
-{
-  Eigen::VectorXd positions;
-  Eigen::VectorXd velocities;
-  Eigen::VectorXd accelerations;
-};
-
 enum class CommandType
 {
   JOINT_POSITION = 0,
@@ -81,7 +74,7 @@ class Servo
 public:
   Servo(const rclcpp::Node::SharedPtr& node);
 
-  RobotJointState getNextJointState(const ServoInput& command);
+  sensor_msgs::msg::JointState getNextJointState(const ServoInput& command);
 
   bool incomingCommandType(const CommandType& command_type);
   CommandType incomingCommandType();
@@ -112,11 +105,6 @@ private:
   std::unique_ptr<CollisionCheck> collision_checker_;
 
   size_t num_joints_;
-  // These variables are mutex protected
-  // previous_joint_state holds the state q(t - dt)
-  // current_joint_state holds the  state q(t) as retrieved from the planning scene monitor.
-  // next_joint_state holds the computed state q(t + dt)
-  sensor_msgs::msg::JointState previous_joint_state_, current_joint_state_, next_joint_state_;
 };
 
 }  // namespace moveit_servo
