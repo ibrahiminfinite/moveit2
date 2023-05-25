@@ -39,13 +39,20 @@
 
 #pragma once
 
+// Standard Library
 #include <variant>
+
+// ROS
 #include <tf2_eigen/tf2_eigen.hpp>
-#include <moveit/kinematics_base/kinematics_base.h>
-#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
-#include <moveit_servo_lib_parameters.hpp>
-#include <moveit_servo/collision_monitor.hpp>
+#include <pluginlib/class_loader.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
+
+// MoveIt
+#include <moveit/kinematics_base/kinematics_base.h>
+#include <moveit/online_signal_smoothing/smoothing_base_class.h>
+#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
+#include <moveit_servo/collision_monitor.hpp>
+#include <moveit_servo_lib_parameters.hpp>
 
 namespace moveit_servo
 {
@@ -87,6 +94,7 @@ public:
   void validateParams(const servo::Params& servo_params);
   void createPlanningSceneMonitor();
   void setIKSolver();
+  void setSmoothingPlugin();
 
 private:
   const rclcpp::Node::SharedPtr node_;
@@ -103,6 +111,8 @@ private:
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
 
   std::unique_ptr<CollisionCheck> collision_checker_;
+  pluginlib::UniquePtr<online_signal_smoothing::SmoothingBaseClass> smoother_;
+  pluginlib::ClassLoader<online_signal_smoothing::SmoothingBaseClass> smoothing_loader_;
 
   size_t num_joints_;
 };

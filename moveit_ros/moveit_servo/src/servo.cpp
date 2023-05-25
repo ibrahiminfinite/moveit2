@@ -46,7 +46,8 @@ namespace moveit_servo
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.servo");
 
-Servo::Servo(const rclcpp::Node::SharedPtr& node) : node_(node)
+Servo::Servo(const rclcpp::Node::SharedPtr& node)
+  : node_(node), smoothing_loader_("moveit_core", "online_signal_smoothing::SmoothingBaseClass")
 {
   std::string param_namespace = "moveit_servo";
   servo_param_listener_ = std::make_shared<const servo::ParamListener>(node_, param_namespace);
@@ -70,7 +71,10 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node) : node_(node)
     throw std::runtime_error("Invalid move group name");
   }
 
+  // Load the IK solver if one exists for the robot
   setIKSolver();
+  // Load the smoothing plugin
+  setSmoothingPlugin();
 
   RCLCPP_INFO_STREAM(LOGGER, "SERVO : Initialized");
 }
@@ -121,6 +125,28 @@ void Servo::setIKSolver()
   }
 }
 
+void Servo::setSmoothingPlugin()
+{
+  // Load the smoothing plugin
+  try
+  {
+    smoother_ = smoothing_loader_.createUniqueInstance(servo_params_.smoothing_filter_plugin_name);
+  }
+  catch (pluginlib::PluginlibException& ex)
+  {
+    RCLCPP_ERROR(LOGGER, "Exception while loading the smoothing plugin '%s': '%s'",
+                 servo_params_.smoothing_filter_plugin_name.c_str(), ex.what());
+    std::exit(EXIT_FAILURE);
+  }
+
+  // Initialize the smoothing plugin
+  if (!smoother_->initialize(node_, planning_scene_monitor_->getRobotModel(), num_joints_))
+  {
+    RCLCPP_ERROR(LOGGER, "Smoothing plugin could not be initialized");
+    std::exit(EXIT_FAILURE);
+  }
+}
+
 sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
 {
   // Compute the change in joint position due to the incoming command
@@ -142,7 +168,7 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   }
 
   // TODO : Apply smoother to the positions
-
+  smoother_->doSmoothing(next_joint_state.position);
   // Compute velocities based on smoothed joint positions
   for (size_t i = 0; i < num_joints_; i++)
   {
