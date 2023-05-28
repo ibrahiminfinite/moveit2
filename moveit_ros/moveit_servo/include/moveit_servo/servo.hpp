@@ -85,7 +85,7 @@ enum class CommandType
 class Servo
 {
 public:
-  Servo(const rclcpp::Node::SharedPtr& node);
+  Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::ParamListener>& servo_param_listener);
 
   sensor_msgs::msg::JointState getNextJointState(const ServoInput& command);
 
@@ -104,7 +104,7 @@ public:
 
 private:
   const rclcpp::Node::SharedPtr node_;
-  
+
   std::atomic<CommandType> incoming_command_type_;
 
   servo::Params servo_params_;

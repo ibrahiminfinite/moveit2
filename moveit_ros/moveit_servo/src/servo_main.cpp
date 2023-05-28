@@ -47,7 +47,9 @@ int main(int argc, char* argv[])
   rclcpp::NodeOptions options;
 
   auto servo_node = std::make_shared<rclcpp::Node>("servo_node", options);
-  auto servo = moveit_servo::Servo(servo_node);
+  std::string param_namespace = "moveit_servo";
+  auto servo_param_listener = std::make_shared<const servo::ParamListener>(servo_node, param_namespace);
+  auto servo = moveit_servo::Servo(servo_node, servo_param_listener);
 
   rclcpp::WallRate rate(1.0 / 0.2);
   while (rclcpp::ok())
@@ -56,17 +58,7 @@ int main(int argc, char* argv[])
     moveit_servo::JointVelocity vec(2);
     vec << 1.0, 2.0;  // std::nan("NaN");
     servo.getNextJointState(vec);
-
-    servo.incomingCommandType(moveit_servo::CommandType::POSE);
-    Eigen::Isometry3d cmd_pose;
-    cmd_pose.setIdentity();
-    moveit_servo::Pose ee_pose{ "panda_link8", cmd_pose };
-    servo.getNextJointState(ee_pose);
-
-    servo.incomingCommandType(moveit_servo::CommandType::TWIST);
-    moveit_servo::Twist twist{ "panda_link8", { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 } };
-    servo.getNextJointState(twist);
-
+    
     rate.sleep();
   }
 

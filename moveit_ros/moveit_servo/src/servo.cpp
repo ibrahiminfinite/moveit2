@@ -46,11 +46,12 @@ namespace moveit_servo
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.servo");
 
-Servo::Servo(const rclcpp::Node::SharedPtr& node)
-  : node_(node), smoothing_loader_("moveit_core", "online_signal_smoothing::SmoothingBaseClass")
+Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::ParamListener>& servo_param_listener)
+  : node_(node)
+  , servo_param_listener_{ servo_param_listener }
+  , smoothing_loader_("moveit_core", "online_signal_smoothing::SmoothingBaseClass")
+
 {
-  std::string param_namespace = "moveit_servo";
-  servo_param_listener_ = std::make_shared<const servo::ParamListener>(node_, param_namespace);
   servo_params_ = servo_param_listener_->get_params();
 
   validateParams(servo_params_);
@@ -159,6 +160,7 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   next_joint_state.position.resize(num_joints_);
   next_joint_state.velocity.resize(num_joints_);
 
+  // TODO : Update filter state
   // TODO : Apply collision scaling to the delta
 
   // Compute the next joint positions based on the joint position deltas
