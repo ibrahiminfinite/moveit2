@@ -55,31 +55,34 @@ geometry_msgs::msg::Pose poseFromCartesianDelta(const Eigen::VectorXd& delta_x,
   return tf2::toMsg(tf_pos_translation * tf_rot_delta * tf_neg_translation * tf_no_new_rot);
 }
 
-
-trajectory_msgs::msg::JointTrajectory ServoCalcs::composeJointTrajMessage(const sensor_msgs::msg::JointState& joint_state)
+trajectory_msgs::msg::JointTrajectory composeTrajectoryMessage(const servo::Params& servo_params,
+                                                               sensor_msgs::msg::JointState& joint_state)
 {
   // When a joint_trajectory_controller receives a new command, a stamp of 0 indicates "begin immediately"
   // See http://wiki.ros.org/joint_trajectory_controller#Trajectory_replacement
+
+  trajectory_msgs::msg::JointTrajectory joint_trajectory;
   joint_trajectory.header.stamp = rclcpp::Time(0);
-  joint_trajectory.header.frame_id = servo_params_.planning_frame;
+  joint_trajectory.header.frame_id = servo_params.planning_frame;
   joint_trajectory.joint_names = joint_state.name;
 
   trajectory_msgs::msg::JointTrajectoryPoint point;
-  point.time_from_start = rclcpp::Duration::from_seconds(servo_params_.publish_period);
-  if (servo_params_.publish_joint_positions)
+  point.time_from_start = rclcpp::Duration::from_seconds(servo_params.publish_period);
+  if (servo_params.publish_joint_positions)
     point.positions = joint_state.position;
-  if (servo_params_.publish_joint_velocities)
+  if (servo_params.publish_joint_velocities)
     point.velocities = joint_state.velocity;
-  if (servo_params_.publish_joint_accelerations)
+  if (servo_params.publish_joint_accelerations)
   {
     // I do not know of a robot that takes acceleration commands.
     // However, some controllers check that this data is non-empty.
     // Send all zeros, for now.
-    std::vector<double> acceleration(num_joints_);
+    std::vector<double> acceleration(7);
     point.accelerations = acceleration;
   }
   joint_trajectory.points.push_back(point);
-}
 
+  return joint_trajectory;
+}
 
 }  // namespace moveit_servo

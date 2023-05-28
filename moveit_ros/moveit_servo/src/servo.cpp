@@ -37,6 +37,7 @@
  *      Author    : Brian O'Neil, Andy Zelenak, Blake Anderson, V Mohammed Ibrahim
  */
 
+#include <iostream>
 #include <rclcpp/rclcpp.hpp>
 #include <moveit_servo/servo.hpp>
 #include <moveit_servo/utils.hpp>
@@ -150,15 +151,27 @@ void Servo::setSmoothingPlugin()
 
 sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
 {
-  // Compute the change in joint position due to the incoming command
-  Eigen::VectorXd joint_position_delta = jointDeltaFromCommand(command);
-
   sensor_msgs::msg::JointState current_joint_state, next_joint_state;
   // Update current joint positions as reported by planning scene monitor
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state.position);
+  current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state.velocity);
+
+  smoother_->reset(current_joint_state.position);
+
+  next_joint_state.name = joint_model_group_->getActiveJointModelNames();
   next_joint_state.position.resize(num_joints_);
   next_joint_state.velocity.resize(num_joints_);
+
+  auto names = next_joint_state.name;
+
+  // Compute the change in joint position due to the incoming command
+  Eigen::VectorXd joint_position_delta = jointDeltaFromCommand(command);
+  for (int i = 0; i < num_joints_; i++)
+  {
+    std::cout << names[i] << ": " << joint_position_delta[i] << ", ";
+  }
+  std::cout << std::endl;
 
   // TODO : Update filter state
   // TODO : Apply collision scaling to the delta
@@ -210,99 +223,15 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
   return next_joint_positions;
 }
 
-Eigen::VectorXd Servo::jointDeltaFromCommand(const Pose& command)
-{
-  Eigen::VectorXd joint_poition_delta(num_joints_);
-  joint_poition_delta.setZero();
-
-  Eigen::Isometry3d tf_planning_to_ee_frame, tf_planning_to_cmd_frame;
-  tf_planning_to_ee_frame.setIdentity();
-  tf_planning_to_cmd_frame.setIdentity();
-
-  // The commanded pose is in some command frame which may or may not be attached to the robot,
-  // The pose we can control is the end-effector pose
-  // We need to find both the commanded pose and end-effector pose in planning_frame
-
-  // We solve (planning_frame -> base -> robot_link_command_frame)
-  // by computing (base->planning_frame)^-1 * (base->robot_link_command_frame)
-  tf_planning_to_cmd_frame = current_state_->getGlobalLinkTransform(servo_params_.planning_frame).inverse() *
-                             current_state_->getGlobalLinkTransform(servo_params_.robot_link_command_frame);
-
-  // Calculate the transform from MoveIt planning frame to End Effector frame
-  // Calculate this transform to ensure it is available via C++ API
-  tf_planning_to_ee_frame = current_state_->getGlobalLinkTransform(servo_params_.planning_frame).inverse() *
-                            current_state_->getGlobalLinkTransform(servo_params_.ee_frame_name);
-
-  // Transform commanded pose to planning frame
-  Eigen::Isometry3d transformed_pose = tf_planning_to_cmd_frame * command.pose;
-
-  // TODO : Compute the linear and angular difference between the commanded and current pose
-  Eigen::Isometry3d pose_delta = tf_planning_to_ee_frame.inverse() * transformed_pose;
-  // TODO : Compute the velocity needed to cover the distance in interval given by publish_period
-  // TODO : Call jointDeltaFromCommand() with a Twist containing the velocities
-
-  return joint_poition_delta;
-}
-
-Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
-{
-  Eigen::VectorXd joint_poition_delta(num_joints_);
-  Eigen::VectorXd cartesian_position_delta;
-
-  std::string command_frame = command.frame_id;
-  const std::string planning_frame = servo_params_.planning_frame;
-
-  if (isValidCommand(command.velocities))
-  {
-    Twist transformed_twist = command;
-
-    if (command_frame.empty())
-    {
-      RCLCPP_WARN_STREAM(LOGGER,
-                         "No frame specified for command, will use planning_frame: " << servo_params_.planning_frame);
-      command_frame = planning_frame;
-    }
-    // Transform the command to the MoveGroup planning frame
-    if (command.frame_id != planning_frame)
-    {
-      // We solve (planning_frame -> base -> cmd.header.frame_id)
-      // by computing (base->planning_frame)^-1 * (base->cmd.header.frame_id)
-      const Eigen::Isometry3d planning_frame_transfrom =
-          current_state_->getGlobalLinkTransform(command_frame).inverse() *
-          current_state_->getGlobalLinkTransform(planning_frame);
-
-      // Apply the transformation to the command vector
-      transformed_twist.frame_id = planning_frame;
-      transformed_twist.velocities.head<3>() = planning_frame_transfrom.linear() * command.velocities.head<3>();
-      transformed_twist.velocities.tail<3>() = planning_frame_transfrom.linear() * command.velocities.tail<3>();
-    }
-
-    // Compute the cartesian position delta based on incoming command
-    cartesian_position_delta = transformed_twist.velocities * servo_params_.publish_period;
-
-    // Use IK to get joint position
-    Eigen::MatrixXd jacobian = current_state_->getJacobian(joint_model_group_);
-
-    Eigen::JacobiSVD<Eigen::MatrixXd> svd =
-        Eigen::JacobiSVD<Eigen::MatrixXd>(jacobian, Eigen::ComputeThinU | Eigen::ComputeThinV);
-    Eigen::MatrixXd matrix_s = svd.singularValues().asDiagonal();
-    Eigen::MatrixXd pseudo_inverse = svd.matrixV() * matrix_s.inverse() * svd.matrixU().transpose();
-
-    // use inverse Jacobian , add IK solver here
-    joint_poition_delta = pseudo_inverse * cartesian_position_delta;
-
-    // TODO : Apply velocity scaling for singularity
-  }
-
-  return joint_poition_delta;
-}
-
 Eigen::VectorXd Servo::jointDeltaFromCommand(const JointVelocity& command)
 {
   // Find the target joint position based on the commanded joint velocity
-  Eigen::VectorXd joint_poition_delta;
+  Eigen::VectorXd joint_poition_delta(num_joints_);
+  joint_poition_delta.setZero();
+
   if (isValidCommand(command))
   {
+    // The incoming command should be in rad/s
     joint_poition_delta = command * servo_params_.publish_period;
   }
   else
