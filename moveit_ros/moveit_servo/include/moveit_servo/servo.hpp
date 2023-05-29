@@ -93,7 +93,7 @@ public:
   bool incomingCommandType(const CommandType& command_type);
   CommandType incomingCommandType();
 
-  StatusCode servo_status_;
+  StatusCode getStatus();
 
 private:
   // Private methods
@@ -132,6 +132,8 @@ private:
   size_t num_joints_;
   std::vector<std::string> joint_names_;
   moveit::core::JointBoundsVector joint_bounds_;
+
+  std::atomic<StatusCode> servo_status_;
 };
 
 }  // namespace moveit_servo

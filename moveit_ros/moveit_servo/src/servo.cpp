@@ -304,6 +304,11 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const JointVelocity& command)
   return joint_poition_delta;
 }
 
+StatusCode Servo::getStatus()
+{
+  return servo_status_;
+}
+
 CommandType Servo::incomingCommandType()
 {
   return incoming_command_type_;

@@ -65,12 +65,8 @@ int main(int argc, char* argv[])
   std::this_thread::sleep_for(std::chrono::seconds(5));
   int count = 0;
 
-  while (rclcpp::ok())
+  while (rclcpp::ok() && servo.getStatus() != moveit_servo::StatusCode::JOINT_BOUND)
   {
-    if (servo.servo_status_ == moveit_servo::StatusCode::JOINT_BOUND)
-    {
-      break;
-    }
     servo.incomingCommandType(moveit_servo::CommandType::JOINT_POSITION);
     moveit_servo::JointVelocity vec(7);
     // Move only the 8th joint
