@@ -78,7 +78,7 @@ typedef std::variant<JointVelocity, Twist, Pose> ServoInput;
 
 enum class CommandType
 {
-  JOINT_POSITION = 0,
+  JOINT_JOG = 0,
   TWIST,
   POSE
 };

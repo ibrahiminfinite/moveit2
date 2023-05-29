@@ -215,7 +215,6 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   double bounded_vel;
   double velocity_scaling_factor;       // The allowable fraction of computed veclocity
   std::vector<int> joint_idxs_to_halt;  // To hold IDs of any joint that needs to be halted
-
   for (size_t i = 0; i < joint_bounds_.size(); i++)
   {
     const auto joint_bound = (*joint_bounds_[i])[0];
@@ -238,24 +237,36 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
             next_joint_vel[i] > 0 && next_joint_pos[i] > (joint_bound.max_position_ - servo_params_.joint_limit_margin);
         if (negative_bound || positive_bound)
         {
-          RCLCPP_WARN_STREAM(LOGGER, " Joint position limit on joint " << i + 1);
+          RCLCPP_WARN_STREAM(LOGGER, " Joint position limit on joint " << joint_names_[i]);
           joint_idxs_to_halt.push_back(i);
         }
       }
     }
   }
 
-  // TODO : Apply halting procedure if any joints need to be halted.
+  // Apply halting if any joints need to be halted.
   if (!joint_idxs_to_halt.empty())
   {
     servo_status_ = moveit_servo::StatusCode::JOINT_BOUND;
+
+    const bool all_joint_halt =
+        incomingCommandType() == CommandType::JOINT_JOG && servo_params_.halt_all_joints_in_joint_mode;
+
+    if (all_joint_halt)
+    {
+      next_joint_pos = current_joint_pos;
+      next_joint_vel.setZero();
+    }
+    else
+    {
+      // Halt only the joints that are out of bounds
+      for (const int idx : joint_idxs_to_halt)
+      {
+        next_joint_pos[idx] = current_joint_pos[idx];
+        next_joint_vel[idx] = 0.0;
+      }
+    }
   }
-  // DEBUG
-  // for (size_t i = 0; i < num_joints_; i++)
-  // {
-  //   std::cout << joint_names_[i] << ": " << joint_position_delta[i] << ", ";
-  // }
-  // std::cout << std::endl;
 
   return next_joint_state;
 }
@@ -267,7 +278,7 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
 
   CommandType incomingType = incomingCommandType();
 
-  if (incomingType == CommandType::JOINT_POSITION && command.index() == 0)
+  if (incomingType == CommandType::JOINT_JOG && command.index() == 0)
   {
     next_joint_positions = jointDeltaFromCommand(std::get<JointVelocity>(command));
   }
