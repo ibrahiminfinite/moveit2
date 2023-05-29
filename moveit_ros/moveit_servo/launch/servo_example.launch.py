@@ -118,7 +118,7 @@ def generate_launch_description():
     # As opposed to a node component, this may be necessary (for example) if Servo is running on a different PC
     servo_node = launch_ros.actions.Node(
         package="moveit_servo",
-        executable="servo_node_main",
+        executable="demo_joint_jog",
         parameters=[
             servo_params,
             low_pass_filter_coeff,

@@ -64,9 +64,15 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   if (servo_params_.check_collisions)
     collision_checker_->start();
 
+  // Create collision velocity subscriber
+  collision_velocity_scale_sub_ = node_->create_subscription<std_msgs::msg::Float64>(
+      "~/collision_velocity_scale", rclcpp::SystemDefaultsQoS(),
+      [this](const std_msgs::msg::Float64::ConstSharedPtr& msg) { return collisionVelocityScaleCB(msg); });
+
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   joint_model_group_ = current_state_->getJointModelGroup(servo_params_.move_group_name);
-  num_joints_ = joint_model_group_->getActiveJointModelNames().size();
+  joint_names_ = joint_model_group_->getActiveJointModelNames();
+  num_joints_ = joint_names_.size();
   if (joint_model_group_ == nullptr)
   {
     RCLCPP_ERROR_STREAM(LOGGER, "Invalid move group name: `" << servo_params_.move_group_name << '`');
@@ -79,6 +85,11 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   setSmoothingPlugin();
 
   RCLCPP_INFO_STREAM(LOGGER, "SERVO : Initialized");
+}
+
+void Servo::collisionVelocityScaleCB(const std_msgs::msg::Float64::ConstSharedPtr& msg)
+{
+  collision_velocity_scale_ = msg->data;
 }
 
 void Servo::createPlanningSceneMonitor()
@@ -151,48 +162,59 @@ void Servo::setSmoothingPlugin()
 
 sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
 {
+  // TODO : Is there any advantage of making these class variables ?
   sensor_msgs::msg::JointState current_joint_state, next_joint_state;
-  // Update current joint positions as reported by planning scene monitor
+  next_joint_state.name = joint_names_;
+  next_joint_state.position.resize(num_joints_);
+  next_joint_state.velocity.resize(num_joints_);
+
+  // Update current robot state as reported by planning scene monitor
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state.position);
   current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state.velocity);
 
+  // Update filter state
   smoother_->reset(current_joint_state.position);
 
-  next_joint_state.name = joint_model_group_->getActiveJointModelNames();
-  next_joint_state.position.resize(num_joints_);
-  next_joint_state.velocity.resize(num_joints_);
+  // Create Eigen maps for cleaner operations
+  Eigen::Map<Eigen::VectorXd, Eigen::Unaligned> next_joint_pos(next_joint_state.position.data(),
+                                                               next_joint_state.position.size());
+  Eigen::Map<Eigen::VectorXd, Eigen::Unaligned> current_joint_pos(current_joint_state.position.data(),
+                                                                  current_joint_state.position.size());
 
-  auto names = next_joint_state.name;
+  Eigen::Map<Eigen::VectorXd, Eigen::Unaligned> next_joint_vel(next_joint_state.velocity.data(),
+                                                               next_joint_state.velocity.size());
+  Eigen::Map<Eigen::VectorXd, Eigen::Unaligned> current_joint_vel(current_joint_state.velocity.data(),
+                                                                  current_joint_state.velocity.size());
 
   // Compute the change in joint position due to the incoming command
   Eigen::VectorXd joint_position_delta = jointDeltaFromCommand(command);
-  for (int i = 0; i < num_joints_; i++)
-  {
-    std::cout << names[i] << ": " << joint_position_delta[i] << ", ";
-  }
-  std::cout << std::endl;
 
-  // TODO : Update filter state
-  // TODO : Apply collision scaling to the delta
+  // Apply collision scaling to the joint position delta
+  joint_position_delta *= collision_velocity_scale_;
 
   // Compute the next joint positions based on the joint position deltas
-  for (size_t i = 0; i < num_joints_; i++)
-  {
-    next_joint_state.position[i] = current_joint_state.position[i] + joint_position_delta[i];
-  }
+  next_joint_pos = current_joint_pos + joint_position_delta;
 
-  // TODO : Apply smoother to the positions
+  // TODO : apply filtering to the velocity instead of position
+  // Apply smoothing to the positions
   smoother_->doSmoothing(next_joint_state.position);
+
   // Compute velocities based on smoothed joint positions
+  next_joint_vel = (next_joint_pos - current_joint_pos) / servo_params_.publish_period;
+
+  // TODO : Enforce joint velocity limits
+
+  // TODO : Enforce position limits
+
+  // TODO : Apply halting procedure if any joints need to be halted.
+
+  // DEBUG
   for (size_t i = 0; i < num_joints_; i++)
   {
-    next_joint_state.velocity[i] =
-        (next_joint_state.position[i] - current_joint_state.position[i]) / servo_params_.publish_period;
+    std::cout << joint_names_[i] << ": " << joint_position_delta[i] << ", ";
   }
-
-  // TODO : Enforce joint velocity and position limits
-  // TODO : Apply halting procedure if any joints need to be halted.
+  std::cout << std::endl;
 
   return next_joint_state;
 }
@@ -208,14 +230,14 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
   {
     next_joint_positions = jointDeltaFromCommand(std::get<JointVelocity>(command));
   }
-  else if (incomingType == CommandType::TWIST && command.index() == 1)
-  {
-    next_joint_positions = jointDeltaFromCommand(std::get<Twist>(command));
-  }
-  else if (incomingType == CommandType::POSE && command.index() == 2)
-  {
-    next_joint_positions = jointDeltaFromCommand(std::get<Pose>(command));
-  }
+  // else if (incomingType == CommandType::TWIST && command.index() == 1)
+  // {
+  //   next_joint_positions = jointDeltaFromCommand(std::get<Twist>(command));
+  // }
+  // else if (incomingType == CommandType::POSE && command.index() == 2)
+  // {
+  //   next_joint_positions = jointDeltaFromCommand(std::get<Pose>(command));
+  // }
   else
   {
     // PRINT RCLCPP_ERROR

@@ -48,6 +48,8 @@ generate_parameter_library(
 # This library provides a C++ interface for sending realtime twist or joint commands to a robot
 add_library(moveit_servo_lib SHARED
   src/servo.cpp
+  src/utils.cpp
+  src/collision_monitor.cpp
 )
 set_target_properties(moveit_servo_lib PROPERTIES VERSION "${moveit_servo_VERSION}")
 ament_target_dependencies(moveit_servo_lib ${THIS_PACKAGE_INCLUDE_DEPENDS})
@@ -77,9 +79,9 @@ target_link_libraries(moveit_servo_lib moveit_servo_lib_parameters)
 ######################
 
 # An executable node for the servo server
-add_executable(servo_node_main demos/cpp_interface/joint_jog_demo.cpp src/servo.cpp src/utils.cpp src/collision_monitor.cpp)
-target_link_libraries(servo_node_main moveit_servo_lib_parameters)
-ament_target_dependencies(servo_node_main ${THIS_PACKAGE_INCLUDE_DEPENDS})
+add_executable(demo_joint_jog demos/cpp_interface/joint_jog_demo.cpp )
+target_link_libraries(demo_joint_jog moveit_servo_lib)
+ament_target_dependencies(demo_joint_jog ${THIS_PACKAGE_INCLUDE_DEPENDS})
 
 # An example of pose tracking
 # add_executable(servo_pose_tracking_demo src/cpp_interface_demo/pose_tracking_demo.cpp)
@@ -113,7 +115,7 @@ install(
 # Install Binaries
 install(
   TARGETS
-    servo_node_main
+  demo_joint_jog
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/moveit_servo

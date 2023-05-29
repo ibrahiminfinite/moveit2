@@ -44,7 +44,6 @@
 #include <moveit_servo/servo.hpp>
 #include <moveit_servo/utils.hpp>
 
-
 int main(int argc, char* argv[])
 {
   rclcpp::init(argc, argv);
@@ -56,11 +55,10 @@ int main(int argc, char* argv[])
   auto servo_param_listener = std::make_shared<const servo::ParamListener>(servo_node, param_namespace);
   auto servo_params = servo_param_listener->get_params();
   auto servo = moveit_servo::Servo(servo_node, servo_param_listener);
-  
+
   rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr trajectory_outgoing_cmd_pub_;
   trajectory_outgoing_cmd_pub_ = servo_node->create_publisher<trajectory_msgs::msg::JointTrajectory>(
-        servo_params.command_out_topic, rclcpp::SystemDefaultsQoS());
-
+      servo_params.command_out_topic, rclcpp::SystemDefaultsQoS());
 
   rclcpp::WallRate rate(1.0 / servo_params.publish_period);
   // Wait for some time, so that we can actually see when the robot moves
@@ -69,18 +67,18 @@ int main(int argc, char* argv[])
 
   while (rclcpp::ok())
   {
-    
-    if (count < 30)
+    if (count > 30)
     {
+      break;
+    }
     servo.incomingCommandType(moveit_servo::CommandType::JOINT_POSITION);
     moveit_servo::JointVelocity vec(7);
     // Move only the 8th joint
     vec << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0;
     auto joint_state = servo.getNextJointState(vec);
-    auto joint_trajectory = moveit_servo::composeTrajectoryMessage(servo_params, joint_state); 
+    auto joint_trajectory = moveit_servo::composeTrajectoryMessage(servo_params, joint_state);
 
     trajectory_outgoing_cmd_pub_->publish(std::move(joint_trajectory));
-    }
     count++;
     rate.sleep();
   }

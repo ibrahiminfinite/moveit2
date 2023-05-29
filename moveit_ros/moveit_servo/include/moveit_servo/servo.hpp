@@ -92,6 +92,8 @@ public:
   bool incomingCommandType(const CommandType& command_type);
   CommandType incomingCommandType();
 
+private:
+  // Private methods
   Eigen::VectorXd jointDeltaFromCommand(const ServoInput& command);
   Eigen::VectorXd jointDeltaFromCommand(const JointVelocity& command);
   Eigen::VectorXd jointDeltaFromCommand(const Twist& command);
@@ -102,7 +104,9 @@ public:
   void setIKSolver();
   void setSmoothingPlugin();
 
-private:
+  void collisionVelocityScaleCB(const std_msgs::msg::Float64::ConstSharedPtr& msg);
+
+  // Attributes
   const rclcpp::Node::SharedPtr node_;
 
   std::atomic<CommandType> incoming_command_type_;
@@ -115,10 +119,14 @@ private:
   kinematics::KinematicsBaseConstPtr ik_solver_ = nullptr;
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
 
+  std::atomic<double> collision_velocity_scale_ = 1.0;
   std::unique_ptr<CollisionCheck> collision_checker_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr collision_velocity_scale_sub_;
+
   pluginlib::UniquePtr<online_signal_smoothing::SmoothingBaseClass> smoother_;
   pluginlib::ClassLoader<online_signal_smoothing::SmoothingBaseClass> smoothing_loader_;
 
+  std::vector<std::string> joint_names_;
   size_t num_joints_;
 };
 
