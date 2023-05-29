@@ -31,7 +31,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *******************************************************************************/
 
-/*      Title     : servo_inputs.hpp
+/*      Title     : servo.hpp
  *      Project   : moveit_servo
  *      Created   : 17/05/2023
  *      Author    : Brian O'Neil, Andy Zelenak, Blake Anderson, V Mohammed Ibrahim
@@ -53,6 +53,7 @@
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit_servo/collision_monitor.hpp>
 #include <moveit_servo_lib_parameters.hpp>
+#include <moveit_servo/status_codes.hpp>
 
 namespace moveit_servo
 {
@@ -91,6 +92,8 @@ public:
 
   bool incomingCommandType(const CommandType& command_type);
   CommandType incomingCommandType();
+
+  StatusCode servo_status_;
 
 private:
   // Private methods

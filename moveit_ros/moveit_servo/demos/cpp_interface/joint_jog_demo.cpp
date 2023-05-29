@@ -31,9 +31,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *******************************************************************************/
 
-/*      Title     : servo_node_main.cpp
+/*      Title     : joint_jog_demo.cpp
  *      Project   : moveit_servo
- *      Created   : 17/05/2023
+ *      Created   : 27/05/2023
  *      Author    : V Mohammed Ibrahim
  */
 
@@ -67,7 +67,7 @@ int main(int argc, char* argv[])
 
   while (rclcpp::ok())
   {
-    if (count > 30)
+    if (servo.servo_status_ == moveit_servo::StatusCode::JOINT_BOUND)
     {
       break;
     }

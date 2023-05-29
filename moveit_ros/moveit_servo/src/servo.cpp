@@ -31,7 +31,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *******************************************************************************/
 
-/*      Title     : servo_inputs.hpp
+/*      Title     : servo.cpp
  *      Project   : moveit_servo
  *      Created   : 17/05/2023
  *      Author    : Brian O'Neil, Andy Zelenak, Blake Anderson, V Mohammed Ibrahim
@@ -166,6 +166,9 @@ void Servo::setSmoothingPlugin()
 
 sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
 {
+  // Set status to clear
+  servo_status_ = moveit_servo::StatusCode::NO_WARNING;
+
   // TODO : Is there any advantage of making these class variables ?
   sensor_msgs::msg::JointState current_joint_state, next_joint_state;
   next_joint_state.name = joint_names_;
@@ -208,25 +211,45 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   // Compute velocities based on smoothed joint positions
   next_joint_vel = (next_joint_pos - current_joint_pos) / servo_params_.publish_period;
 
-  // TODO : Enforce joint velocity limits
-  // Get joint bounds for active joints
-
+  // Enforce joint velocity and position limits
   double bounded_vel;
-  Eigen::VectorXd velocityScalingFactor(num_joints_);
+  double velocity_scaling_factor;       // The allowable fraction of computed veclocity
+  std::vector<int> joint_idxs_to_halt;  // To hold IDs of any joint that needs to be halted
+
   for (size_t i = 0; i < joint_bounds_.size(); i++)
   {
     const auto joint_bound = (*joint_bounds_[i])[0];
     if (joint_bound.velocity_bounded_ && next_joint_vel[i] != 0.0)
     {
+      // Find the ratio of clamped velocity to original velocity
       bounded_vel = std::clamp(next_joint_vel[i], joint_bound.min_velocity_, joint_bound.max_velocity_);
-      velocityScalingFactor[i] = bounded_vel / next_joint_vel[i];
-      next_joint_vel[i] = bounded_vel;
+      velocity_scaling_factor = bounded_vel / next_joint_vel[i];
+      // Scale down the velocity
+      next_joint_vel[i] = next_joint_vel[i] * velocity_scaling_factor;
+      // Adjust joint position based on scaled down velocity
+      next_joint_pos[i] = current_joint_pos[i] + (next_joint_vel[i] * servo_params_.publish_period);
+
+      // Check if any joints are going past joint position limits
+      if (joint_bound.position_bounded_)
+      {
+        const bool negative_bound =
+            next_joint_vel[i] < 0 && next_joint_pos[i] < (joint_bound.min_position_ + servo_params_.joint_limit_margin);
+        const bool positive_bound =
+            next_joint_vel[i] > 0 && next_joint_pos[i] > (joint_bound.max_position_ - servo_params_.joint_limit_margin);
+        if (negative_bound || positive_bound)
+        {
+          RCLCPP_WARN_STREAM(LOGGER, " Joint position limit on joint " << i + 1);
+          joint_idxs_to_halt.push_back(i);
+        }
+      }
     }
   }
-  // TODO : Enforce position limits
 
   // TODO : Apply halting procedure if any joints need to be halted.
-
+  if (!joint_idxs_to_halt.empty())
+  {
+    servo_status_ = moveit_servo::StatusCode::JOINT_BOUND;
+  }
   // DEBUG
   // for (size_t i = 0; i < num_joints_; i++)
   // {
