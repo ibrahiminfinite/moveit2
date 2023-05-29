@@ -126,8 +126,9 @@ private:
   pluginlib::UniquePtr<online_signal_smoothing::SmoothingBaseClass> smoother_;
   pluginlib::ClassLoader<online_signal_smoothing::SmoothingBaseClass> smoothing_loader_;
 
-  std::vector<std::string> joint_names_;
   size_t num_joints_;
+  std::vector<std::string> joint_names_;
+  moveit::core::JointBoundsVector joint_bounds_;
 };
 
 }  // namespace moveit_servo

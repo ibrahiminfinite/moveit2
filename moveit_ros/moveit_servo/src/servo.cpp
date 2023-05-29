@@ -71,8 +71,12 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
 
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   joint_model_group_ = current_state_->getJointModelGroup(servo_params_.move_group_name);
+
+  // Get necessary information about joints
   joint_names_ = joint_model_group_->getActiveJointModelNames();
+  joint_bounds_ = joint_model_group_->getActiveJointModelsBounds();
   num_joints_ = joint_names_.size();
+
   if (joint_model_group_ == nullptr)
   {
     RCLCPP_ERROR_STREAM(LOGGER, "Invalid move group name: `" << servo_params_.move_group_name << '`');
@@ -177,6 +181,7 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   smoother_->reset(current_joint_state.position);
 
   // Create Eigen maps for cleaner operations
+  // TODO : probably should make these class variables as well
   Eigen::Map<Eigen::VectorXd, Eigen::Unaligned> next_joint_pos(next_joint_state.position.data(),
                                                                next_joint_state.position.size());
   Eigen::Map<Eigen::VectorXd, Eigen::Unaligned> current_joint_pos(current_joint_state.position.data(),
@@ -204,17 +209,30 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   next_joint_vel = (next_joint_pos - current_joint_pos) / servo_params_.publish_period;
 
   // TODO : Enforce joint velocity limits
+  // Get joint bounds for active joints
 
+  double bounded_vel;
+  Eigen::VectorXd velocityScalingFactor(num_joints_);
+  for (size_t i = 0; i < joint_bounds_.size(); i++)
+  {
+    const auto joint_bound = (*joint_bounds_[i])[0];
+    if (joint_bound.velocity_bounded_ && next_joint_vel[i] != 0.0)
+    {
+      bounded_vel = std::clamp(next_joint_vel[i], joint_bound.min_velocity_, joint_bound.max_velocity_);
+      velocityScalingFactor[i] = bounded_vel / next_joint_vel[i];
+      next_joint_vel[i] = bounded_vel;
+    }
+  }
   // TODO : Enforce position limits
 
   // TODO : Apply halting procedure if any joints need to be halted.
 
   // DEBUG
-  for (size_t i = 0; i < num_joints_; i++)
-  {
-    std::cout << joint_names_[i] << ": " << joint_position_delta[i] << ", ";
-  }
-  std::cout << std::endl;
+  // for (size_t i = 0; i < num_joints_; i++)
+  // {
+  //   std::cout << joint_names_[i] << ": " << joint_position_delta[i] << ", ";
+  // }
+  // std::cout << std::endl;
 
   return next_joint_state;
 }
