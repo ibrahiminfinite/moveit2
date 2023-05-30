@@ -47,11 +47,29 @@
 
 namespace moveit_servo
 {
+
+/**
+ * \brief Checks if a given command is valid.
+ * @param command The command to be checked.
+ * @return True if the command is valid, else False.
+ */
 bool isValidCommand(Eigen::VectorXd command);
 
+/**
+ * \brief Create a pose message for the provided change in cartesian position.
+ * @param delta_x The change in cartesian position.
+ * @param base_to_tip_frame_transform The transformation from robot base to ee frame.
+ * @return The pose message.
+ */
 geometry_msgs::msg::Pose poseFromCartesianDelta(const Eigen::VectorXd& delta_x,
                                                 const Eigen::Isometry3d& base_to_tip_frame_transform);
 
+/**
+ * \brief Create a trajectory message from given joint state.
+ * @param servo_params The configuration used by servo, required for setting some field of the trajectory message.
+ * @param joint_state The joint state to be added into the trajectory.
+ * @return The trajectory message.
+ */
 trajectory_msgs::msg::JointTrajectory composeTrajectoryMessage(const servo::Params& servo_params,
                                                                sensor_msgs::msg::JointState& joint_state);
 

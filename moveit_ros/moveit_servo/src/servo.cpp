@@ -164,8 +164,45 @@ void Servo::setSmoothingPlugin()
   }
 }
 
+void Servo::updateParams()
+{
+  if (servo_param_listener_->is_old(servo_params_))
+  {
+    auto params = servo_param_listener_->get_params();
+    if (params.override_velocity_scaling_factor != servo_params_.override_velocity_scaling_factor)
+    {
+      RCLCPP_INFO_STREAM(LOGGER, "override_velocity_scaling_factor changed to : "
+                                     << std::to_string(params.override_velocity_scaling_factor));
+    }
+
+    if (params.robot_link_command_frame != servo_params_.robot_link_command_frame)
+    {
+      if (current_state_->knowsFrameTransform(params.robot_link_command_frame))
+      {
+        RCLCPP_INFO_STREAM(LOGGER, "robot_link_command_frame changed to : " << params.robot_link_command_frame);
+      }
+      else
+      {
+        RCLCPP_ERROR_STREAM(LOGGER, "Failed to change robot_link_command_frame. Passed frame '"
+                                        << params.robot_link_command_frame
+                                        << "' is unknown, will keep using old command frame.");
+        // Replace frame in new param set with old frame value
+        // TODO : Is there a better behaviour here ?
+        params.robot_link_command_frame = servo_params_.robot_link_command_frame;
+      }
+    }
+    servo_params_ = params;
+  }
+}
+
 sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
 {
+  // Update the parameters
+  if (servo_params_.enable_parameter_update)
+  {
+    updateParams();
+  }
+
   // Set status to clear
   servo_status_ = moveit_servo::StatusCode::NO_WARNING;
 
@@ -280,7 +317,7 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
 
   if (incomingType == CommandType::JOINT_JOG && command.index() == 0)
   {
-    next_joint_positions = jointDeltaFromCommand(std::get<JointVelocity>(command));
+    next_joint_positions = jointDeltaFromCommand(std::get<JointJog>(command));
   }
   // else if (incomingType == CommandType::TWIST && command.index() == 1)
   // {
@@ -297,7 +334,7 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
   return next_joint_positions;
 }
 
-Eigen::VectorXd Servo::jointDeltaFromCommand(const JointVelocity& command)
+Eigen::VectorXd Servo::jointDeltaFromCommand(const JointJog& command)
 {
   // Find the target joint position based on the commanded joint velocity
   Eigen::VectorXd joint_poition_delta(num_joints_);
@@ -325,10 +362,9 @@ CommandType Servo::incomingCommandType()
   return incoming_command_type_;
 }
 
-bool Servo::incomingCommandType(const CommandType& command_type)
+void Servo::incomingCommandType(const CommandType& command_type)
 {
   incoming_command_type_ = command_type;
-  return true;
 }
 
 void Servo::validateParams(const servo::Params& servo_params)

@@ -89,7 +89,7 @@ servo:
 ################################ GENERAL CONFIG #############################
   enable_parameter_update: {
     type: bool,
-    default_value: false,
+    default_value: true,
     description: "If true, continuous check for parameter update is enabled \
                   Currently only the following parameters are updated:
                   1. override_velocity_scaling_factor

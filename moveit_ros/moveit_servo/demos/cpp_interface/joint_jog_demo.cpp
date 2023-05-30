@@ -68,7 +68,7 @@ int main(int argc, char* argv[])
   while (rclcpp::ok() && servo.getStatus() != moveit_servo::StatusCode::JOINT_BOUND)
   {
     // Move only the 7th joint
-    moveit_servo::JointVelocity vec(7);
+    moveit_servo::JointJog vec(7);
     vec << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0;
 
     auto joint_state = servo.getNextJointState(vec);

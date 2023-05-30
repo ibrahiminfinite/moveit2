@@ -60,7 +60,7 @@ namespace moveit_servo
 
 // Datatypes used by servo
 
-typedef Eigen::VectorXd JointVelocity;
+typedef Eigen::VectorXd JointJog;
 
 struct Pose
 {
@@ -74,7 +74,7 @@ struct Twist
   Eigen::Vector<double, 6> velocities;
 };
 
-typedef std::variant<JointVelocity, Twist, Pose> ServoInput;
+typedef std::variant<JointJog, Twist, Pose> ServoInput;
 
 enum class CommandType
 {
@@ -90,26 +90,86 @@ public:
 
   sensor_msgs::msg::JointState getNextJointState(const ServoInput& command);
 
-  bool incomingCommandType(const CommandType& command_type);
+  /**
+   * \brief Set the type of incoming servo command.
+   * @param command_type The type of command servo should expect.
+   */
+  void incomingCommandType(const CommandType& command_type);
+
+  /**
+   * \brief Get the type of command that servo is currently expecting.
+   * @return The type of command.
+   */
   CommandType incomingCommandType();
 
+  /**
+   * \brief Get the current status of servo.
+   * @return The current status.
+   */
   StatusCode getStatus();
 
 private:
-  // Private methods
+  /**
+   * \brief Compute the change in joint position for the received command.
+   * @param command The incoming servo command.
+   * @return The joint position change required (delta).
+   */
   Eigen::VectorXd jointDeltaFromCommand(const ServoInput& command);
-  Eigen::VectorXd jointDeltaFromCommand(const JointVelocity& command);
+
+  /**
+   * \brief Compute the change in joint position for the given joint jog command.
+   * @param command The joint jog command.
+   * @return The joint position change required (delta).
+   */
+  Eigen::VectorXd jointDeltaFromCommand(const JointJog& command);
+
+  /**
+   * \brief Compute the change in joint position for the given twist command.
+   * @param command The twist command.
+   * @return The joint position change required (delta).
+   */
   Eigen::VectorXd jointDeltaFromCommand(const Twist& command);
+
+  /**
+   * \brief Compute the change in joint position for the given pose command.
+   * @param command The pose command.
+   * @return The joint position change required (delta).
+   */
   Eigen::VectorXd jointDeltaFromCommand(const Pose& command);
 
+  /**
+   * \brief Validate the servo parameters
+   * @param servo_params The servo parameters
+   */
   void validateParams(const servo::Params& servo_params);
+
+  /**
+   * \brief Creates the planning scene monitor used by servo
+   */
   void createPlanningSceneMonitor();
+
+  /**
+   * \brief Set the IK solver that servo will use. If the robot does not have one, inverse jacobian will be used instead.
+   */
   void setIKSolver();
+
+  /**
+   * \brief create and initialize the smoothing plugin to be used by servo.
+   */
   void setSmoothingPlugin();
 
+  /**
+   * \brief The callback for velocity scaling values from collision checker.
+   */
   void collisionVelocityScaleCB(const std_msgs::msg::Float64::ConstSharedPtr& msg);
 
-  // Attributes
+  /**
+   * \brief Updates the servo parameters and performs some validations.
+   */
+  void updateParams();
+
+  // Variables
+
   const rclcpp::Node::SharedPtr node_;
 
   std::atomic<CommandType> incoming_command_type_;
