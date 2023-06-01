@@ -123,4 +123,99 @@ trajectory_msgs::msg::JointTrajectory composeTrajectoryMessage(const servo::Para
   return joint_trajectory;
 }
 
+double velocityScalingFactorForSingularity(const moveit::core::JointModelGroup* joint_model_group,
+                                           const moveit::core::RobotStatePtr& current_state,
+                                           const Eigen::VectorXd& target_delta_x, const servo::Params& servo_params,
+                                           StatusCode& servo_status)
+{
+  // Get the thresholds.
+  const double lower_singularity_threshold = servo_params.lower_singularity_threshold;
+  const double hard_stop_singularity_threshold = servo_params.hard_stop_singularity_threshold;
+  const double leaving_singularity_threshold_multiplier = servo_params.leaving_singularity_threshold_multiplier;
+
+  // Get size of total controllable dimensions.
+  size_t dims = target_delta_x.size();
+
+  // Get the current jacobian and compute SVD
+  Eigen::JacobiSVD<Eigen::MatrixXd> current_svd = Eigen::JacobiSVD<Eigen::MatrixXd>(
+      current_state->getJacobian(joint_model_group), Eigen::ComputeThinU | Eigen::ComputeThinV);
+  Eigen::MatrixXd matrix_s = current_svd.singularValues().asDiagonal();
+
+  // Compute pseudo inverse
+  Eigen::MatrixXd pseudo_inverse = current_svd.matrixV() * matrix_s.inverse() * current_svd.matrixU().transpose();
+
+  // Get the singular vector corresponding to least singular value.
+  // This vector represents the least responsive dimension. By convention this is the last column of the matrix U.
+  // The sign of the singular vector from result of SVD is not reliable, so we need to do extra checking to make sure of
+  // the sign. See R. Bro, "Resolving the Sign Ambiguity in the Singular Value Decomposition".
+  Eigen::VectorXd vector_towards_singularity = current_svd.matrixU().col(dims - 1);
+
+  // Compute the current condition number. The ratio of max and min singular values.
+  // By convention these are the first and last element of the diagonal.
+  const double current_condition_number = current_svd.singularValues()(0) / current_svd.singularValues()(dims - 1);
+
+  // Take a small step in the direction of vector_towards_singularity
+  double scale = 100;
+  Eigen::VectorXd delta_x = vector_towards_singularity / scale;
+
+  // Compute the new joint angles if we take the small step delta_x
+  Eigen::VectorXd next_joint_angles;
+  current_state->copyJointGroupPositions(joint_model_group, next_joint_angles);
+  next_joint_angles += pseudo_inverse * delta_x;
+
+  // Compute the Jacobian SVD for the new robot state.
+  current_state->setJointGroupPositions(joint_model_group, next_joint_angles);
+  Eigen::JacobiSVD<Eigen::MatrixXd> next_svd = Eigen::JacobiSVD<Eigen::MatrixXd>(
+      current_state->getJacobian(joint_model_group), Eigen::ComputeThinU | Eigen::ComputeThinV);
+
+  // Compute condition number for the new Jacobian.
+  const double next_condition_number = next_svd.singularValues()(0) / next_svd.singularValues()(dims - 1);
+
+  // If the condition number has increased, we are moving towards singularity and the direction of the
+  // vector_towards_singularity is correct. If the condition number has decreased, it means the sign of
+  // vector_towards_singularity needs to be flipped.
+  if (next_condition_number <= current_condition_number)
+  {
+    vector_towards_singularity *= -1;
+  }
+
+  // Double check the direction using dot product.
+  const bool moving_towards_singularity = vector_towards_singularity.dot(target_delta_x) > 0;
+
+  // Compute upper condition variable threshold based on if we are moving towards or away from singularity.
+  // See https://github.com/ros-planning/moveit2/pull/620#issuecomment-1201418258 for visual explanation.
+  double upper_threshold;
+  if (moving_towards_singularity)
+  {
+    upper_threshold = hard_stop_singularity_threshold;
+  }
+  else
+  {
+    const double threshold_size = (hard_stop_singularity_threshold - lower_singularity_threshold);
+    upper_threshold = lower_singularity_threshold + (threshold_size * leaving_singularity_threshold_multiplier);
+  }
+
+  // Compute the scale based on the current condition number.
+  double velocity_scale = 1.0;
+  const bool is_above_lower_limit = current_condition_number > lower_singularity_threshold;
+  const bool is_below_hard_stop_limit = current_condition_number < hard_stop_singularity_threshold;
+  if (is_above_lower_limit && is_below_hard_stop_limit)
+  {
+    velocity_scale -=
+        (current_condition_number - lower_singularity_threshold) / (upper_threshold - lower_singularity_threshold);
+
+    servo_status = moving_towards_singularity ? moveit_servo::StatusCode::DECELERATE_FOR_APPROACHING_SINGULARITY :
+                                                moveit_servo::StatusCode::DECELERATE_FOR_LEAVING_SINGULARITY;
+    ;
+  }
+  // If condition number has crossed hard stop limit, halt the robot.
+  else if (!is_below_hard_stop_limit)
+  {
+    servo_status = moveit_servo::StatusCode::HALT_FOR_SINGULARITY;
+    velocity_scale = 0.0;
+  }
+
+  return velocity_scale;
+}
+
 }  // namespace moveit_servo

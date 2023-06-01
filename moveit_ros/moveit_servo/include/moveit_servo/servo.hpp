@@ -193,7 +193,7 @@ private:
   std::vector<std::string> joint_names_;
   moveit::core::JointBoundsVector joint_bounds_;
 
-  std::atomic<StatusCode> servo_status_;
+  StatusCode servo_status_;
 };
 
 }  // namespace moveit_servo

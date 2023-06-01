@@ -43,6 +43,9 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 
+#include <moveit/robot_model/joint_model_group.h>
+#include <moveit/robot_state/robot_state.h>
+#include <moveit_servo/status_codes.hpp>
 #include <moveit_servo_lib_parameters.hpp>
 
 namespace moveit_servo
@@ -72,5 +75,19 @@ geometry_msgs::msg::Pose poseFromCartesianDelta(const Eigen::VectorXd& delta_x,
  */
 trajectory_msgs::msg::JointTrajectory composeTrajectoryMessage(const servo::Params& servo_params,
                                                                sensor_msgs::msg::JointState& joint_state);
+
+/**
+ * \brief Computes scaling factor for velocity when the robot is near a singularity.
+ * @param joint_model_group The joint model group of the robot, used for fetching the Jacobian.
+ * @param current_state The current state of the robot, used for singularity look ahead.
+ * @param target_delta_x The vector containing the required change in cartesian position.
+ * @param servo_params The servo parameters, contains the singularity thresholds.
+ * @param servo_status The status of servo, can be modified by the function.
+ * @return The velocity scaling factor.
+ */
+double velocityScalingFactorForSingularity(const moveit::core::JointModelGroup* joint_model_group,
+                                           const moveit::core::RobotStatePtr& current_state,
+                                           const Eigen::VectorXd& target_delta_x, const servo::Params& servo_params,
+                                           StatusCode& servo_status);
 
 }  // namespace moveit_servo

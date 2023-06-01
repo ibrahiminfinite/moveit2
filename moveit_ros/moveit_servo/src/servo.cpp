@@ -53,6 +53,7 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   , smoothing_loader_("moveit_core", "online_signal_smoothing::SmoothingBaseClass")
 
 {
+  servo_status_ = StatusCode::NO_WARNING;
   servo_params_ = servo_param_listener_->get_params();
 
   validateParams(servo_params_);
@@ -215,7 +216,7 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   // Update current robot state as reported by planning scene monitor
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state.position);
-  current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state.velocity);
+  current_state_->copyJointGroupVelocities(joint_model_group_, current_joint_state.velocity);
 
   // Update filter state
   smoother_->reset(current_joint_state.position);
@@ -333,17 +334,17 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
   {
     next_joint_positions = jointDeltaFromCommand(std::get<JointJog>(command));
   }
-  // else if (incomingType == CommandType::TWIST && command.index() == 1)
-  // {
-  //   next_joint_positions = jointDeltaFromCommand(std::get<Twist>(command));
-  // }
+  else if (incomingType == CommandType::TWIST && command.index() == 1)
+  {
+    next_joint_positions = jointDeltaFromCommand(std::get<Twist>(command));
+  }
   // else if (incomingType == CommandType::POSE && command.index() == 2)
   // {
   //   next_joint_positions = jointDeltaFromCommand(std::get<Pose>(command));
   // }
   else
   {
-    // PRINT RCLCPP_ERROR
+    RCLCPP_WARN_STREAM(LOGGER, "INVALID SERVO COMMAND TYPE");
   }
   return next_joint_positions;
 }
@@ -364,6 +365,59 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const JointJog& command)
     RCLCPP_WARN_STREAM(LOGGER, " SERVO : Invalid joint velocity command");
   }
   return joint_poition_delta;
+}
+
+Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
+{
+  Eigen::VectorXd joint_position_delta(num_joints_);
+  Eigen::VectorXd cartesian_position_delta;
+
+  std::string command_frame = command.frame_id;
+  const std::string planning_frame = servo_params_.planning_frame;
+
+  if (isValidCommand(command.velocities))
+  {
+    Twist transformed_twist = command;
+
+    if (command_frame.empty())
+    {
+      RCLCPP_WARN_STREAM(LOGGER,
+                         "No frame specified for command, will use planning_frame: " << servo_params_.planning_frame);
+      command_frame = planning_frame;
+    }
+    // Transform the command to the MoveGroup planning frame
+    if (command.frame_id != planning_frame)
+    {
+      // We solve (planning_frame -> base -> cmd.header.frame_id)
+      // by computing (base->planning_frame)^-1 * (base->cmd.header.frame_id)
+      const Eigen::Isometry3d planning_frame_transfrom =
+          current_state_->getGlobalLinkTransform(command_frame).inverse() *
+          current_state_->getGlobalLinkTransform(planning_frame);
+
+      // Apply the transformation to the command vector
+      transformed_twist.frame_id = planning_frame;
+      transformed_twist.velocities.head<3>() = planning_frame_transfrom.linear() * command.velocities.head<3>();
+      transformed_twist.velocities.tail<3>() = planning_frame_transfrom.linear() * command.velocities.tail<3>();
+    }
+
+    // Compute the cartesian position delta based on incoming command, assumed to be in m/s
+    cartesian_position_delta = transformed_twist.velocities * servo_params_.publish_period;
+
+    Eigen::MatrixXd jacobian = current_state_->getJacobian(joint_model_group_);
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd =
+        Eigen::JacobiSVD<Eigen::MatrixXd>(jacobian, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    Eigen::MatrixXd matrix_s = svd.singularValues().asDiagonal();
+    Eigen::MatrixXd pseudo_inverse = svd.matrixV() * matrix_s.inverse() * svd.matrixU().transpose();
+
+    // TODO : use robot IK solver to get joint position delta
+    //  Use inverse Jacobian , add IK solver here
+    joint_position_delta = pseudo_inverse * cartesian_position_delta;
+
+    // TODO : Apply velocity scaling for singularity
+    joint_position_delta *= moveit_servo::velocityScalingFactorForSingularity(
+        joint_model_group_, current_state_, cartesian_position_delta, servo_params_, servo_status_);
+  }
+  return joint_position_delta;
 }
 
 StatusCode Servo::getStatus()
