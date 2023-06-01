@@ -206,31 +206,20 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   // Set status to clear
   servo_status_ = moveit_servo::StatusCode::NO_WARNING;
 
-  // TODO : Is there any advantage of making these class variables ?
-  sensor_msgs::msg::JointState current_joint_state, next_joint_state;
-  next_joint_state.name = joint_names_;
-  next_joint_state.position.resize(num_joints_);
-  next_joint_state.velocity.resize(num_joints_);
+  // Joint position and veloctiy variables.
+  // The smoother needs a std::vector input, so we create std::vector's but make Eigen::Map for cleaner computation.
+  std::vector<double> current_joint_pos(num_joints_), next_joint_pos(num_joints_);
+  Eigen::Map<Eigen::VectorXd> current_joint_positions(current_joint_pos.data(), current_joint_pos.size());
+  Eigen::Map<Eigen::VectorXd> next_joint_positions(next_joint_pos.data(), next_joint_pos.size());
+  Eigen::VectorXd current_joint_velocities(num_joints_), next_joint_velocities(num_joints_);
 
   // Update current robot state as reported by planning scene monitor
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
-  current_state_->copyJointGroupPositions(joint_model_group_, current_joint_state.position);
-  current_state_->copyJointGroupVelocities(joint_model_group_, current_joint_state.velocity);
+  current_state_->copyJointGroupPositions(joint_model_group_, current_joint_pos);
+  current_state_->copyJointGroupVelocities(joint_model_group_, current_joint_velocities);
 
   // Update filter state
-  smoother_->reset(current_joint_state.position);
-
-  // Create Eigen maps for cleaner operations
-  // TODO : probably should make these class variables as well
-  Eigen::Map<Eigen::VectorXd, Eigen::Unaligned> next_joint_pos(next_joint_state.position.data(),
-                                                               next_joint_state.position.size());
-  Eigen::Map<Eigen::VectorXd, Eigen::Unaligned> current_joint_pos(current_joint_state.position.data(),
-                                                                  current_joint_state.position.size());
-
-  Eigen::Map<Eigen::VectorXd, Eigen::Unaligned> next_joint_vel(next_joint_state.velocity.data(),
-                                                               next_joint_state.velocity.size());
-  Eigen::Map<Eigen::VectorXd, Eigen::Unaligned> current_joint_vel(current_joint_state.velocity.data(),
-                                                                  current_joint_state.velocity.size());
+  smoother_->reset(current_joint_pos);
 
   // Compute the change in joint position due to the incoming command
   Eigen::VectorXd joint_position_delta = jointDeltaFromCommand(command);
@@ -247,14 +236,14 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   joint_position_delta *= collision_velocity_scale_;
 
   // Compute the next joint positions based on the joint position deltas
-  next_joint_pos = current_joint_pos + joint_position_delta;
+  next_joint_positions = current_joint_positions + joint_position_delta;
 
   // TODO : apply filtering to the velocity instead of position
   // Apply smoothing to the positions
-  smoother_->doSmoothing(next_joint_state.position);
+  smoother_->doSmoothing(next_joint_pos);
 
   // Compute velocities based on smoothed joint positions
-  next_joint_vel = (next_joint_pos - current_joint_pos) / servo_params_.publish_period;
+  next_joint_velocities = (next_joint_positions - current_joint_positions) / servo_params_.publish_period;
 
   // Enforce joint limits
   std::vector<int> joint_idxs_to_halt;
@@ -268,11 +257,11 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
     for (size_t i = 0; i < joint_bounds_.size(); i++)
     {
       const auto joint_bound = (*joint_bounds_[i])[0];
-      if (joint_bound.velocity_bounded_ && next_joint_vel[i] != 0.0)
+      if (joint_bound.velocity_bounded_ && next_joint_velocities[i] != 0.0)
       {
         // Find the ratio of clamped velocity to original velocity
-        bounded_vel = std::clamp(next_joint_vel[i], joint_bound.min_velocity_, joint_bound.max_velocity_);
-        velocity_scaling_factors.push_back(bounded_vel / next_joint_vel[i]);
+        bounded_vel = std::clamp(next_joint_velocities[i], joint_bound.min_velocity_, joint_bound.max_velocity_);
+        velocity_scaling_factors.push_back(bounded_vel / next_joint_velocities[i]);
       }
     }
     // Find the lowest scaling factor, this helps preserve cartesian motion.
@@ -280,10 +269,10 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   }
 
   // Scale down the velocity
-  next_joint_vel *= min_scaling_factor;
+  next_joint_velocities *= min_scaling_factor;
 
   // Adjust joint position based on scaled down velocity
-  next_joint_pos = current_joint_pos + (next_joint_vel * servo_params_.publish_period);
+  next_joint_positions = current_joint_positions + (next_joint_velocities * servo_params_.publish_period);
 
   // Check if any joints are going past joint position limits
   for (size_t i = 0; i < joint_bounds_.size(); i++)
@@ -292,9 +281,11 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
     if (joint_bound.position_bounded_)
     {
       const bool negative_bound =
-          next_joint_vel[i] < 0 && next_joint_pos[i] < (joint_bound.min_position_ + servo_params_.joint_limit_margin);
+          next_joint_velocities[i] < 0 &&
+          next_joint_positions[i] < (joint_bound.min_position_ + servo_params_.joint_limit_margin);
       const bool positive_bound =
-          next_joint_vel[i] > 0 && next_joint_pos[i] > (joint_bound.max_position_ - servo_params_.joint_limit_margin);
+          next_joint_velocities[i] > 0 &&
+          next_joint_positions[i] > (joint_bound.max_position_ - servo_params_.joint_limit_margin);
       if (negative_bound || positive_bound)
       {
         RCLCPP_WARN_STREAM(LOGGER, " Joint position limit on joint " << joint_names_[i]);
@@ -313,18 +304,29 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
 
     if (all_joint_halt)
     {
-      next_joint_pos = current_joint_pos;
-      next_joint_vel.setZero();
+      next_joint_positions = current_joint_positions;
+      next_joint_velocities.setZero();
     }
     else
     {
       // Halt only the joints that are out of bounds
       for (const int idx : joint_idxs_to_halt)
       {
-        next_joint_pos[idx] = current_joint_pos[idx];
-        next_joint_vel[idx] = 0.0;
+        next_joint_positions[idx] = current_joint_positions[idx];
+        next_joint_velocities[idx] = 0.0;
       }
     }
+  }
+
+  // next state
+  sensor_msgs::msg::JointState next_joint_state;
+  next_joint_state.name = joint_names_;
+  next_joint_state.position.resize(num_joints_);
+  next_joint_state.velocity.resize(num_joints_);
+  for (size_t i = 0; i < num_joints_; i++)
+  {
+    next_joint_state.position[i] = next_joint_positions[i];
+    next_joint_state.velocity[i] = next_joint_velocities[i];
   }
 
   return next_joint_state;
