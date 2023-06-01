@@ -46,6 +46,7 @@
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 
 // MoveIt
 #include <moveit/kinematics_base/kinematics_base.h>
@@ -167,6 +168,13 @@ private:
    * \brief Updates the servo parameters and performs some validations.
    */
   void updateParams();
+
+  /**
+   * \brief Computes the required change in joint angles for given cartesian change, using the robots IK solver.
+   * @param carteisan_position_delta The change in cartesian position.
+   * @return The required joing angle deltas.
+   */
+  Eigen::VectorXd detlaFromIkSolver(Eigen::VectorXd cartesian_position_delta);
 
   // Variables
 

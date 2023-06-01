@@ -188,7 +188,6 @@ void Servo::updateParams()
                                         << params.robot_link_command_frame
                                         << "' is unknown, will keep using old command frame.");
         // Replace frame in new param set with old frame value
-        // TODO : Is there a better behaviour here ?
         params.robot_link_command_frame = servo_params_.robot_link_command_frame;
       }
     }
@@ -257,7 +256,7 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   {
     double bounded_vel;
     std::vector<double> velocity_scaling_factors;  // The allowable fraction of computed veclocity
-                                                   // To hold IDs of any joint that needs to be halted
+
     for (size_t i = 0; i < joint_bounds_.size(); i++)
     {
       const auto joint_bound = (*joint_bounds_[i])[0];
@@ -409,15 +408,58 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
     Eigen::MatrixXd matrix_s = svd.singularValues().asDiagonal();
     Eigen::MatrixXd pseudo_inverse = svd.matrixV() * matrix_s.inverse() * svd.matrixU().transpose();
 
-    // TODO : use robot IK solver to get joint position delta
-    //  Use inverse Jacobian , add IK solver here
-    joint_position_delta = pseudo_inverse * cartesian_position_delta;
+    // Compute the required change in joint angles.
+    if (ik_solver_)
+    {
+      // Use robot's IK solver to get joint position delta.
+      joint_position_delta = detlaFromIkSolver(cartesian_position_delta);
+    }
+    else
+    {
+      // Robot does not have an IK solver, use inverse Jacobian to compute IK.
+      joint_position_delta = pseudo_inverse * cartesian_position_delta;
+    }
 
-    // TODO : Apply velocity scaling for singularity
+    // Apply velocity scaling for singularity.
     joint_position_delta *= moveit_servo::velocityScalingFactorForSingularity(
         joint_model_group_, current_state_, cartesian_position_delta, servo_params_, servo_status_);
   }
   return joint_position_delta;
+}
+
+Eigen::VectorXd Servo::detlaFromIkSolver(Eigen::VectorXd cartesian_position_delta)
+{
+  Eigen::VectorXd delta_theta(num_joints_);
+  std::vector<double> current_joint_positions(num_joints_);
+
+  current_state_->copyJointGroupPositions(joint_model_group_, current_joint_positions);
+
+  const Eigen::Isometry3d base_to_tip_frame_transform =
+      current_state_->getGlobalLinkTransform(ik_solver_->getBaseFrame()).inverse() *
+      current_state_->getGlobalLinkTransform(ik_solver_->getTipFrame());
+
+  geometry_msgs::msg::Pose next_pose = poseFromCartesianDelta(cartesian_position_delta, base_to_tip_frame_transform);
+
+  // setup for IK call
+  std::vector<double> solution(num_joints_);
+  moveit_msgs::msg::MoveItErrorCodes err;
+  kinematics::KinematicsQueryOptions opts;
+  opts.return_approximate_solution = true;
+  if (ik_solver_->searchPositionIK(next_pose, current_joint_positions, servo_params_.publish_period / 2.0, solution,
+                                   err, opts))
+  {
+    // find the difference in joint positions that will get us to the desired pose
+    for (size_t i = 0; i < num_joints_; ++i)
+    {
+      delta_theta.coeffRef(i) = solution.at(i) - current_joint_positions[i];
+    }
+  }
+  else
+  {
+    RCLCPP_WARN(LOGGER, "Could not find IK solution for requested motion, got error code %d", err.val);
+  }
+
+  return delta_theta;
 }
 
 StatusCode Servo::getStatus()

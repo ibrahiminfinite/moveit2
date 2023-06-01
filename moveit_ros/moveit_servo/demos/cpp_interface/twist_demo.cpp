@@ -44,7 +44,6 @@
 #include <moveit_servo/servo.hpp>
 #include <moveit_servo/utils.hpp>
 
-
 using namespace moveit_servo;
 
 int main(int argc, char* argv[])
@@ -62,7 +61,7 @@ int main(int argc, char* argv[])
       servo_params.command_out_topic, rclcpp::SystemDefaultsQoS());
 
   auto servo = Servo(servo_node, servo_param_listener);
-  
+
   // Wait for some time, so that we can actually see when the robot moves
   std::this_thread::sleep_for(std::chrono::seconds(5));
 
@@ -72,7 +71,7 @@ int main(int argc, char* argv[])
   {
     // Move in the x direction;
     servo.incomingCommandType(CommandType::TWIST);
-    Twist twist {servo_params.planning_frame, {0.1, 0.1, 0.0, 0.0, 0.0, 0.0}};
+    Twist twist{ servo_params.planning_frame, { 0.1, 0.1, 0.0, 0.0, 0.0, 0.0 } };
 
     auto joint_state = servo.getNextJointState(twist);
     auto joint_trajectory = composeTrajectoryMessage(servo_params, joint_state);
