@@ -236,6 +236,14 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   Eigen::VectorXd joint_position_delta = jointDeltaFromCommand(command);
 
   // Apply collision scaling to the joint position delta
+  if (collision_velocity_scale_ > 0 && collision_velocity_scale_ < 1)
+  {
+    servo_status_ = StatusCode::DECELERATE_FOR_COLLISION;
+  }
+  else if (collision_velocity_scale_ == 0)
+  {
+    servo_status_ = StatusCode::HALT_FOR_COLLISION;
+  }
   joint_position_delta *= collision_velocity_scale_;
 
   // Compute the next joint positions based on the joint position deltas
@@ -343,7 +351,7 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
   // }
   else
   {
-    RCLCPP_WARN_STREAM(LOGGER, "INVALID SERVO COMMAND TYPE");
+    servo_status_ = StatusCode::INVALID;
   }
   return next_joint_positions;
 }
