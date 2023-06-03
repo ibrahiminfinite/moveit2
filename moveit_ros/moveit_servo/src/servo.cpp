@@ -37,6 +37,8 @@
  *      Author    : Brian O'Neil, Andy Zelenak, Blake Anderson, V Mohammed Ibrahim
  */
 
+#include <chrono>
+
 #include <rclcpp/rclcpp.hpp>
 #include <moveit_servo/servo.hpp>
 #include <moveit_servo/utils.hpp>
@@ -87,6 +89,12 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   // Load the smoothing plugin
   setSmoothingPlugin();
 
+  // Create PID controllers for pose tracking
+  rclcpp::WallRate controller_rate(1 / servo_params_.publish_period);
+  controller_period_ = controller_rate.period().count();
+  pid_controllers_ = initializeControllers(servo_params_);
+  RCLCPP_INFO_STREAM(LOGGER, "PID controllers created.");
+
   // Check if the tansforms to planning frame and end-effector frame exists.
   if (!transformExists(current_state_, servo_params_.planning_frame))
   {
@@ -101,7 +109,7 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   else
   {
     servo_status_ = StatusCode::NO_WARNING;
-    RCLCPP_INFO_STREAM(LOGGER, "Initialized successfully");
+    RCLCPP_INFO_STREAM(LOGGER, "Servo initialized successfully");
   }
 }
 
@@ -440,6 +448,58 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
     if (!has_transform)
       RCLCPP_WARN_STREAM(LOGGER, "No transform available for command frame " << command_frame);
   }
+  return joint_position_delta;
+}
+
+Eigen::VectorXd Servo::jointDeltaFromCommand(const Pose& command)
+{
+  Eigen::VectorXd joint_position_delta(num_joints_);
+
+  std::string command_frame = command.frame_id;
+  const std::string planning_frame = servo_params_.planning_frame;
+
+  // Check if frame is valid
+  bool has_transform = transformExists(current_state_, command_frame);
+  // TODO : make validation function for Isometry 3D
+  if (has_transform)
+  {
+    Pose target_pose = command;
+    const Eigen::Isometry3d planning_frame_transform = current_state_->getGlobalLinkTransform(planning_frame);
+    const Eigen::Isometry3d ee_pose = current_state_->getGlobalLinkTransform(servo_params_.ee_frame_name);
+    // Convert frame to planning frame
+    if (command_frame != planning_frame)
+    {
+      target_pose.pose = planning_frame_transform * command.pose;
+      target_pose.frame_id = planning_frame;
+    }
+
+    // Get pose of end-effector in planning frame
+    const Eigen::Isometry3d planning_frame_ee_pose = planning_frame_transform * ee_pose;
+
+    // TODO : Check if we are already at given pose
+
+    Twist target_twist;
+    target_twist.frame_id = planning_frame;
+    // Compute the linear error and required velocities.
+    auto linear_error = target_pose.pose.translation() - planning_frame_ee_pose.translation();
+    target_twist.velocities[0] = pid_controllers_["x"].computeCommand(linear_error[0], controller_period_);
+    target_twist.velocities[1] = pid_controllers_["y"].computeCommand(linear_error[1], controller_period_);
+    target_twist.velocities[2] = pid_controllers_["z"].computeCommand(linear_error[2], controller_period_);
+
+    // TODO : Compute angular error and required velocities
+    Eigen::Quaterniond q_target(target_pose.pose.rotation());
+    Eigen::Quaterniond q_current(planning_frame_ee_pose.rotation());
+    Eigen::Quaterniond q_error = q_target * q_current.inverse();
+    Eigen::AngleAxisd axis_angle(q_error);
+    double angular_velocity = pid_controllers_["q"].computeCommand(axis_angle.angle(), controller_period_);
+    target_twist.velocities[3] = angular_velocity * axis_angle.axis()[0];
+    target_twist.velocities[4] = angular_velocity * axis_angle.axis()[1];
+    target_twist.velocities[5] = angular_velocity * axis_angle.axis()[2];
+
+    // Call jointDeltaFromCommand with twist
+    joint_position_delta = jointDeltaFromCommand(target_twist);
+  }
+
   return joint_position_delta;
 }
 

@@ -277,4 +277,29 @@ std::vector<int> jointsToHalt(const Eigen::VectorXd& positions, const Eigen::Vec
   return joint_idxs_to_halt;
 }
 
+std::map<std::string, control_toolbox::Pid> initializeControllers(const servo::Params& servo_params)
+{
+  std::map<std::string, control_toolbox::Pid> pid_controllers;
+
+  // Get the parameters
+  auto x_pid = servo_params.pose_tracking.x_pid;
+  auto y_pid = servo_params.pose_tracking.y_pid;
+  auto z_pid = servo_params.pose_tracking.z_pid;
+  auto q_pid = servo_params.pose_tracking.q_pid;
+  double windup_limit = servo_params.pose_tracking.windup_limit;
+  bool use_anti_windup = servo_params.pose_tracking.use_anti_windup;
+
+  // Create the controllers
+  pid_controllers["x"] =
+      control_toolbox::Pid(x_pid.kp, x_pid.ki, x_pid.kd, windup_limit, -windup_limit, use_anti_windup);
+  pid_controllers["y"] =
+      control_toolbox::Pid(y_pid.kp, y_pid.ki, y_pid.kd, windup_limit, -windup_limit, use_anti_windup);
+  pid_controllers["z"] =
+      control_toolbox::Pid(z_pid.kp, z_pid.ki, z_pid.kd, windup_limit, -windup_limit, use_anti_windup);
+  pid_controllers["q"] =
+      control_toolbox::Pid(q_pid.kp, q_pid.ki, q_pid.kd, windup_limit, -windup_limit, use_anti_windup);
+
+  return pid_controllers;
+}
+
 }  // namespace moveit_servo

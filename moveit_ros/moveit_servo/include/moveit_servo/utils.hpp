@@ -39,6 +39,8 @@
 
 #pragma once
 
+#include <control_toolbox/pid.hpp>
+
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
@@ -117,5 +119,12 @@ double velocityScalingFactor(const Eigen::VectorXd& velocities, const moveit::co
  */
 std::vector<int> jointsToHalt(const Eigen::VectorXd& positions, const Eigen::VectorXd& velocities,
                               const moveit::core::JointBoundsVector& joint_bounds, double margin);
+
+/**
+ * \brief Creates the PID controllers used for pose tracking based on config provided in servo parameters.
+ * The parameters can be updated dynamically.
+ * @param servo_params The servo parameters, used to get pid information.
+ */
+std::map<std::string, control_toolbox::Pid> initializeControllers(const servo::Params& servo_params);
 
 }  // namespace moveit_servo

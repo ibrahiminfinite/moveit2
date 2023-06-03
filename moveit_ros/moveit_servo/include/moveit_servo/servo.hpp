@@ -42,6 +42,8 @@
 // Standard Library
 #include <variant>
 
+#include <control_toolbox/pid.hpp>
+
 // ROS
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <pluginlib/class_loader.hpp>
@@ -208,6 +210,9 @@ private:
   moveit::core::JointBoundsVector joint_bounds_;
 
   StatusCode servo_status_;
+
+  uint64_t controller_period_;
+  std::map<std::string, control_toolbox::Pid> pid_controllers_;
 };
 
 }  // namespace moveit_servo
