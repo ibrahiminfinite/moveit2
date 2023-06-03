@@ -46,39 +46,54 @@
 
 using namespace moveit_servo;
 
+const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.twist_demo");
+
 int main(int argc, char* argv[])
 {
   rclcpp::init(argc, argv);
 
+  // The servo object expects to get a ROS node.
   auto servo_node = std::make_shared<rclcpp::Node>("servo_node");
 
+  // Get the servo parameters.
   std::string param_namespace = "moveit_servo";
   auto servo_param_listener = std::make_shared<const servo::ParamListener>(servo_node, param_namespace);
   auto servo_params = servo_param_listener->get_params();
 
+  // The publisher to send trajectory message to the robot controller.
   rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr trajectory_outgoing_cmd_pub_;
   trajectory_outgoing_cmd_pub_ = servo_node->create_publisher<trajectory_msgs::msg::JointTrajectory>(
       servo_params.command_out_topic, rclcpp::SystemDefaultsQoS());
 
+  // Create the servo object
   auto servo = Servo(servo_node, servo_param_listener);
 
-  // Wait for some time, so that we can actually see when the robot moves
+  // Wait for some time, so that we can actually see when the robot moves.
   std::this_thread::sleep_for(std::chrono::seconds(5));
 
+  // Frquency at which the commands will be send to robot controller.
   rclcpp::WallRate rate(1.0 / servo_params.publish_period);
-  std::cout << "SERVO STATUS: " << SERVO_STATUS_CODE_MAP.at(servo.getStatus()) << std::endl;
+
+  // Set the command type for servo.
+  servo.incomingCommandType(CommandType::TWIST);
+
+  RCLCPP_INFO_STREAM(LOGGER, "SERVO STATUS: " << servo.getStatusMessage());
   while (rclcpp::ok() && servo.getStatus() == StatusCode::NO_WARNING)
   {
-    // Move in the x direction;
-    servo.incomingCommandType(CommandType::TWIST);
+    // Move in a diagonal direction;
     Twist twist{ servo_params.planning_frame, { 0.1, 0.1, 0.0, 0.0, 0.0, 0.0 } };
 
     auto joint_state = servo.getNextJointState(twist);
-    auto joint_trajectory = composeTrajectoryMessage(servo_params, joint_state);
 
-    trajectory_outgoing_cmd_pub_->publish(std::move(joint_trajectory));
+    // Send the command to robot controller only if the command was valid.
+    if (servo.getStatus() != StatusCode::INVALID)
+    {
+      auto joint_trajectory = composeTrajectoryMessage(servo_params, joint_state);
+      trajectory_outgoing_cmd_pub_->publish(std::move(joint_trajectory));
+    }
+
     rate.sleep();
   }
-  std::cout << "SERVO STATUS: " << SERVO_STATUS_CODE_MAP.at(servo.getStatus()) << std::endl;
+  RCLCPP_INFO_STREAM(LOGGER, "SERVO STATUS: " << servo.getStatusMessage());
   rclcpp::shutdown();
 }

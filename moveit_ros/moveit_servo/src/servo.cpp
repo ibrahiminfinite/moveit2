@@ -224,96 +224,100 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   // Compute the change in joint position due to the incoming command
   Eigen::VectorXd joint_position_delta = jointDeltaFromCommand(command);
 
-  // Apply collision scaling to the joint position delta
-  if (collision_velocity_scale_ > 0 && collision_velocity_scale_ < 1)
+  // Continue rest of the computations only if the command was valid
+  if (servo_status_ != StatusCode::INVALID)
   {
-    servo_status_ = StatusCode::DECELERATE_FOR_COLLISION;
-  }
-  else if (collision_velocity_scale_ == 0)
-  {
-    servo_status_ = StatusCode::HALT_FOR_COLLISION;
-  }
-  joint_position_delta *= collision_velocity_scale_;
+    // Apply collision scaling to the joint position delta
+    if (collision_velocity_scale_ > 0 && collision_velocity_scale_ < 1)
+    {
+      servo_status_ = StatusCode::DECELERATE_FOR_COLLISION;
+    }
+    else if (collision_velocity_scale_ == 0)
+    {
+      servo_status_ = StatusCode::HALT_FOR_COLLISION;
+    }
+    joint_position_delta *= collision_velocity_scale_;
 
-  // Compute the next joint positions based on the joint position deltas
-  next_joint_positions = current_joint_positions + joint_position_delta;
+    // Compute the next joint positions based on the joint position deltas
+    next_joint_positions = current_joint_positions + joint_position_delta;
 
-  // TODO : apply filtering to the velocity instead of position
-  // Apply smoothing to the positions
-  smoother_->doSmoothing(next_joint_pos);
+    // TODO : apply filtering to the velocity instead of position
+    // Apply smoothing to the positions
+    smoother_->doSmoothing(next_joint_pos);
 
-  // Compute velocities based on smoothed joint positions
-  next_joint_velocities = (next_joint_positions - current_joint_positions) / servo_params_.publish_period;
+    // Compute velocities based on smoothed joint positions
+    next_joint_velocities = (next_joint_positions - current_joint_positions) / servo_params_.publish_period;
 
-  // Enforce joint limits
-  std::vector<int> joint_idxs_to_halt;
-  double min_scaling_factor = servo_params_.override_velocity_scaling_factor;
-  // If override value is close to zero, user is not overriding the scaling
-  if (min_scaling_factor < 0.01)
-  {
-    double bounded_vel;
-    std::vector<double> velocity_scaling_factors;  // The allowable fraction of computed veclocity
+    // Enforce joint limits
+    std::vector<int> joint_idxs_to_halt;
+    double min_scaling_factor = servo_params_.override_velocity_scaling_factor;
+    // If override value is close to zero, user is not overriding the scaling
+    if (min_scaling_factor < 0.01)
+    {
+      double bounded_vel;
+      std::vector<double> velocity_scaling_factors;  // The allowable fraction of computed veclocity
 
+      for (size_t i = 0; i < joint_bounds_.size(); i++)
+      {
+        const auto joint_bound = (*joint_bounds_[i])[0];
+        if (joint_bound.velocity_bounded_ && next_joint_velocities[i] != 0.0)
+        {
+          // Find the ratio of clamped velocity to original velocity
+          bounded_vel = std::clamp(next_joint_velocities[i], joint_bound.min_velocity_, joint_bound.max_velocity_);
+          velocity_scaling_factors.push_back(bounded_vel / next_joint_velocities[i]);
+        }
+      }
+      // Find the lowest scaling factor, this helps preserve cartesian motion.
+      min_scaling_factor = *std::min_element(velocity_scaling_factors.begin(), velocity_scaling_factors.end());
+    }
+
+    // Scale down the velocity
+    next_joint_velocities *= min_scaling_factor;
+
+    // Adjust joint position based on scaled down velocity
+    next_joint_positions = current_joint_positions + (next_joint_velocities * servo_params_.publish_period);
+
+    // Check if any joints are going past joint position limits
     for (size_t i = 0; i < joint_bounds_.size(); i++)
     {
       const auto joint_bound = (*joint_bounds_[i])[0];
-      if (joint_bound.velocity_bounded_ && next_joint_velocities[i] != 0.0)
+      if (joint_bound.position_bounded_)
       {
-        // Find the ratio of clamped velocity to original velocity
-        bounded_vel = std::clamp(next_joint_velocities[i], joint_bound.min_velocity_, joint_bound.max_velocity_);
-        velocity_scaling_factors.push_back(bounded_vel / next_joint_velocities[i]);
+        const bool negative_bound =
+            next_joint_velocities[i] < 0 &&
+            next_joint_positions[i] < (joint_bound.min_position_ + servo_params_.joint_limit_margin);
+        const bool positive_bound =
+            next_joint_velocities[i] > 0 &&
+            next_joint_positions[i] > (joint_bound.max_position_ - servo_params_.joint_limit_margin);
+        if (negative_bound || positive_bound)
+        {
+          RCLCPP_WARN_STREAM(LOGGER, "SERVO: Joint position limit on joint " << joint_names_[i]);
+          joint_idxs_to_halt.push_back(i);
+        }
       }
     }
-    // Find the lowest scaling factor, this helps preserve cartesian motion.
-    min_scaling_factor = *std::min_element(velocity_scaling_factors.begin(), velocity_scaling_factors.end());
-  }
 
-  // Scale down the velocity
-  next_joint_velocities *= min_scaling_factor;
-
-  // Adjust joint position based on scaled down velocity
-  next_joint_positions = current_joint_positions + (next_joint_velocities * servo_params_.publish_period);
-
-  // Check if any joints are going past joint position limits
-  for (size_t i = 0; i < joint_bounds_.size(); i++)
-  {
-    const auto joint_bound = (*joint_bounds_[i])[0];
-    if (joint_bound.position_bounded_)
+    // Apply halting if any joints need to be halted.
+    if (!joint_idxs_to_halt.empty())
     {
-      const bool negative_bound =
-          next_joint_velocities[i] < 0 &&
-          next_joint_positions[i] < (joint_bound.min_position_ + servo_params_.joint_limit_margin);
-      const bool positive_bound =
-          next_joint_velocities[i] > 0 &&
-          next_joint_positions[i] > (joint_bound.max_position_ - servo_params_.joint_limit_margin);
-      if (negative_bound || positive_bound)
+      servo_status_ = moveit_servo::StatusCode::JOINT_BOUND;
+
+      const bool all_joint_halt =
+          incomingCommandType() == CommandType::JOINT_JOG && servo_params_.halt_all_joints_in_joint_mode;
+
+      if (all_joint_halt)
       {
-        RCLCPP_WARN_STREAM(LOGGER, " Joint position limit on joint " << joint_names_[i]);
-        joint_idxs_to_halt.push_back(i);
+        next_joint_positions = current_joint_positions;
+        next_joint_velocities.setZero();
       }
-    }
-  }
-
-  // Apply halting if any joints need to be halted.
-  if (!joint_idxs_to_halt.empty())
-  {
-    servo_status_ = moveit_servo::StatusCode::JOINT_BOUND;
-
-    const bool all_joint_halt =
-        incomingCommandType() == CommandType::JOINT_JOG && servo_params_.halt_all_joints_in_joint_mode;
-
-    if (all_joint_halt)
-    {
-      next_joint_positions = current_joint_positions;
-      next_joint_velocities.setZero();
-    }
-    else
-    {
-      // Halt only the joints that are out of bounds
-      for (const int idx : joint_idxs_to_halt)
+      else
       {
-        next_joint_positions[idx] = current_joint_positions[idx];
-        next_joint_velocities[idx] = 0.0;
+        // Halt only the joints that are out of bounds
+        for (const int idx : joint_idxs_to_halt)
+        {
+          next_joint_positions[idx] = current_joint_positions[idx];
+          next_joint_velocities[idx] = 0.0;
+        }
       }
     }
   }
@@ -354,6 +358,7 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
   else
   {
     servo_status_ = StatusCode::INVALID;
+    RCLCPP_WARN_STREAM(LOGGER, "SERVO : Invalid command type, check if proper command type has been set.");
   }
   return next_joint_positions;
 }
@@ -371,7 +376,8 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const JointJog& command)
   }
   else
   {
-    RCLCPP_WARN_STREAM(LOGGER, " SERVO : Invalid joint velocity command");
+    servo_status_ = StatusCode::INVALID;
+    RCLCPP_WARN_STREAM(LOGGER, "SERVO: Invalid joint velocity command");
   }
   return joint_poition_delta;
 }
@@ -434,6 +440,11 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
     joint_position_delta *= moveit_servo::velocityScalingFactorForSingularity(
         joint_model_group_, current_state_, cartesian_position_delta, servo_params_, servo_status_);
   }
+  else
+  {
+    servo_status_ = StatusCode::INVALID;
+    RCLCPP_WARN_STREAM(LOGGER, "SERVO: Invalid twist command");
+  }
   return joint_position_delta;
 }
 
@@ -466,7 +477,7 @@ Eigen::VectorXd Servo::detlaFromIkSolver(Eigen::VectorXd cartesian_position_delt
   }
   else
   {
-    RCLCPP_WARN(LOGGER, "Could not find IK solution for requested motion, got error code %d", err.val);
+    RCLCPP_WARN_STREAM(LOGGER, "Could not find IK solution for requested motion, got error code " << err.val);
   }
 
   return delta_theta;
@@ -475,6 +486,11 @@ Eigen::VectorXd Servo::detlaFromIkSolver(Eigen::VectorXd cartesian_position_delt
 StatusCode Servo::getStatus()
 {
   return servo_status_;
+}
+
+const std::string Servo::getStatusMessage()
+{
+  return SERVO_STATUS_CODE_MAP.at(servo_status_);
 }
 
 CommandType Servo::incomingCommandType()

@@ -109,6 +109,12 @@ public:
    */
   StatusCode getStatus();
 
+  /**
+   * \brief Get the message associated with the current servo status.
+   * @return The status message.
+   */
+  const std::string getStatusMessage();
+
 private:
   /**
    * \brief Compute the change in joint position for the received command.
