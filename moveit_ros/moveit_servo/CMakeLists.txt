@@ -60,12 +60,12 @@ target_link_libraries(moveit_servo_lib moveit_servo_lib_parameters)
 ######################
 
 # An executable node for the joint jog demo
-add_executable(demo_joint_jog demos/cpp_interface/joint_jog_demo.cpp )
+add_executable(demo_joint_jog demos/cpp_interface/demo_joint_jog.cpp )
 target_link_libraries(demo_joint_jog moveit_servo_lib)
 ament_target_dependencies(demo_joint_jog ${THIS_PACKAGE_INCLUDE_DEPENDS})
 
 # An executable node for the twist demo
-add_executable(demo_twist demos/cpp_interface/twist_demo.cpp )
+add_executable(demo_twist demos/cpp_interface/demo_twist.cpp )
 target_link_libraries(demo_twist moveit_servo_lib)
 ament_target_dependencies(demo_twist ${THIS_PACKAGE_INCLUDE_DEPENDS})
 

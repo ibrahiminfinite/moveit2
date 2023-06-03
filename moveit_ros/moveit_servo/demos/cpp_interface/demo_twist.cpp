@@ -68,9 +68,6 @@ int main(int argc, char* argv[])
   // Create the servo object
   auto servo = Servo(servo_node, servo_param_listener);
 
-  // Wait for some time, so that we can actually see when the robot moves.
-  std::this_thread::sleep_for(std::chrono::seconds(5));
-
   // Frquency at which the commands will be send to robot controller.
   rclcpp::WallRate rate(1.0 / servo_params.publish_period);
 
