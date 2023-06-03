@@ -52,6 +52,14 @@ namespace moveit_servo
 {
 
 /**
+ * \brief Checks if a transform exists to the given frame.
+ * @param current_state The current robot state.
+ * @param frame_name The name of the frame for which we want to know if transform exists.
+ * @return True if transform exists, else false
+ */
+bool transformExists(const moveit::core::RobotStatePtr& current_state, const std::string frame_name);
+
+/**
  * \brief Checks if a given command is valid.
  * @param command The command to be checked.
  * @return True if the command is valid, else False.
@@ -82,12 +90,21 @@ trajectory_msgs::msg::JointTrajectory composeTrajectoryMessage(const servo::Para
  * @param current_state The current state of the robot, used for singularity look ahead.
  * @param target_delta_x The vector containing the required change in cartesian position.
  * @param servo_params The servo parameters, contains the singularity thresholds.
- * @param servo_status The status of servo, can be modified by the function.
+ * @return The velocity scaling factor and the reason for scaling.
+ */
+std::pair<double, StatusCode>
+velocityScalingFactorForSingularity(const moveit::core::JointModelGroup* joint_model_group,
+                                    const moveit::core::RobotStatePtr& current_state,
+                                    const Eigen::VectorXd& target_delta_x, const servo::Params& servo_params);
+
+/**
+ * \brief Apply velocity scaling based on joint limits.
+ * @param velocities The commanded velocities.
+ * @param joint_bounds The bounding information for the robot joints.
+ * @param scaling_override The user defined velocity scaling override.
  * @return The velocity scaling factor.
  */
-double velocityScalingFactorForSingularity(const moveit::core::JointModelGroup* joint_model_group,
-                                           const moveit::core::RobotStatePtr& current_state,
-                                           const Eigen::VectorXd& target_delta_x, const servo::Params& servo_params,
-                                           StatusCode& servo_status);
+double velocityScalingFactor(Eigen::VectorXd velocities, moveit::core::JointBoundsVector joint_bounds,
+                             double scaling_override);
 
 }  // namespace moveit_servo

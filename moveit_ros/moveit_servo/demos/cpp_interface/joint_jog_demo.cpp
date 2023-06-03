@@ -77,7 +77,7 @@ int main(int argc, char* argv[])
   // Set the command type for servo.
   servo.incomingCommandType(CommandType::JOINT_JOG);
 
-  RCLCPP_INFO_STREAM(LOGGER, "SERVO STATUS: " << servo.getStatusMessage());
+  RCLCPP_INFO_STREAM(LOGGER, servo.getStatusMessage());
   while (rclcpp::ok() && servo.getStatus() == StatusCode::NO_WARNING)
   {
     // Move only the 7th joint
@@ -95,6 +95,6 @@ int main(int argc, char* argv[])
 
     rate.sleep();
   }
-  RCLCPP_INFO_STREAM(LOGGER, "SERVO STATUS: " << servo.getStatusMessage());
+  RCLCPP_INFO_STREAM(LOGGER, servo.getStatusMessage());
   rclcpp::shutdown();
 }

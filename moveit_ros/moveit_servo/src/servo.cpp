@@ -37,7 +37,6 @@
  *      Author    : Brian O'Neil, Andy Zelenak, Blake Anderson, V Mohammed Ibrahim
  */
 
-#include <iostream>
 #include <rclcpp/rclcpp.hpp>
 #include <moveit_servo/servo.hpp>
 #include <moveit_servo/utils.hpp>
@@ -53,7 +52,6 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   , smoothing_loader_("moveit_core", "online_signal_smoothing::SmoothingBaseClass")
 
 {
-  servo_status_ = StatusCode::NO_WARNING;
   servo_params_ = servo_param_listener_->get_params();
 
   validateParams(servo_params_);
@@ -89,7 +87,22 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   // Load the smoothing plugin
   setSmoothingPlugin();
 
-  RCLCPP_INFO_STREAM(LOGGER, "SERVO : Initialized");
+  // Check if the tansforms to planning frame and end-effector frame exists.
+  if (!transformExists(current_state_, servo_params_.planning_frame))
+  {
+    servo_status_ = StatusCode::INVALID;
+    RCLCPP_ERROR_STREAM(LOGGER, "SERVO: No transform available for planning frame " << servo_params_.planning_frame);
+  }
+  else if (!transformExists(current_state_, servo_params_.ee_frame_name))
+  {
+    servo_status_ = StatusCode::INVALID;
+    RCLCPP_ERROR_STREAM(LOGGER, "SERVO: No transform available for end-effector frame " << servo_params_.ee_frame_name);
+  }
+  else
+  {
+    servo_status_ = StatusCode::NO_WARNING;
+    RCLCPP_INFO_STREAM(LOGGER, "SERVO: Initialized successfully");
+  }
 }
 
 void Servo::collisionVelocityScaleCB(const std_msgs::msg::Float64::ConstSharedPtr& msg)
@@ -204,7 +217,7 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   }
 
   // Set status to clear
-  servo_status_ = moveit_servo::StatusCode::NO_WARNING;
+  servo_status_ = StatusCode::NO_WARNING;
 
   // Joint position and veloctiy variables.
   // The smoother needs a std::vector input, so we create std::vector's but make Eigen::Map for cleaner computation.
@@ -248,36 +261,15 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
     // Compute velocities based on smoothed joint positions
     next_joint_velocities = (next_joint_positions - current_joint_positions) / servo_params_.publish_period;
 
-    // Enforce joint limits
-    std::vector<int> joint_idxs_to_halt;
-    double min_scaling_factor = servo_params_.override_velocity_scaling_factor;
-    // If override value is close to zero, user is not overriding the scaling
-    if (min_scaling_factor < 0.01)
-    {
-      double bounded_vel;
-      std::vector<double> velocity_scaling_factors;  // The allowable fraction of computed veclocity
-
-      for (size_t i = 0; i < joint_bounds_.size(); i++)
-      {
-        const auto joint_bound = (*joint_bounds_[i])[0];
-        if (joint_bound.velocity_bounded_ && next_joint_velocities[i] != 0.0)
-        {
-          // Find the ratio of clamped velocity to original velocity
-          bounded_vel = std::clamp(next_joint_velocities[i], joint_bound.min_velocity_, joint_bound.max_velocity_);
-          velocity_scaling_factors.push_back(bounded_vel / next_joint_velocities[i]);
-        }
-      }
-      // Find the lowest scaling factor, this helps preserve cartesian motion.
-      min_scaling_factor = *std::min_element(velocity_scaling_factors.begin(), velocity_scaling_factors.end());
-    }
-
-    // Scale down the velocity
-    next_joint_velocities *= min_scaling_factor;
+    // Scale down the velocity based on joint velocity limit or user defined scaling if applicable.
+    next_joint_velocities *=
+        velocityScalingFactor(next_joint_velocities, joint_bounds_, servo_params_.override_velocity_scaling_factor);
 
     // Adjust joint position based on scaled down velocity
     next_joint_positions = current_joint_positions + (next_joint_velocities * servo_params_.publish_period);
 
     // Check if any joints are going past joint position limits
+    std::vector<int> joint_idxs_to_halt;
     for (size_t i = 0; i < joint_bounds_.size(); i++)
     {
       const auto joint_bound = (*joint_bounds_[i])[0];
@@ -300,7 +292,7 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
     // Apply halting if any joints need to be halted.
     if (!joint_idxs_to_halt.empty())
     {
-      servo_status_ = moveit_servo::StatusCode::JOINT_BOUND;
+      servo_status_ = StatusCode::JOINT_BOUND;
 
       const bool all_joint_halt =
           incomingCommandType() == CommandType::JOINT_JOG && servo_params_.halt_all_joints_in_joint_mode;
@@ -390,7 +382,9 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
   std::string command_frame = command.frame_id;
   const std::string planning_frame = servo_params_.planning_frame;
 
-  if (isValidCommand(command.velocities))
+  bool has_transform = transformExists(current_state_, command_frame);
+  bool valid_command = isValidCommand(command.velocities);
+  if (has_transform && valid_command)
   {
     Twist transformed_twist = command;
 
@@ -418,12 +412,6 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
     // Compute the cartesian position delta based on incoming command, assumed to be in m/s
     cartesian_position_delta = transformed_twist.velocities * servo_params_.publish_period;
 
-    Eigen::MatrixXd jacobian = current_state_->getJacobian(joint_model_group_);
-    Eigen::JacobiSVD<Eigen::MatrixXd> svd =
-        Eigen::JacobiSVD<Eigen::MatrixXd>(jacobian, Eigen::ComputeThinU | Eigen::ComputeThinV);
-    Eigen::MatrixXd matrix_s = svd.singularValues().asDiagonal();
-    Eigen::MatrixXd pseudo_inverse = svd.matrixV() * matrix_s.inverse() * svd.matrixU().transpose();
-
     // Compute the required change in joint angles.
     if (ik_solver_)
     {
@@ -433,17 +421,33 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
     else
     {
       // Robot does not have an IK solver, use inverse Jacobian to compute IK.
+      Eigen::MatrixXd jacobian = current_state_->getJacobian(joint_model_group_);
+      Eigen::JacobiSVD<Eigen::MatrixXd> svd =
+          Eigen::JacobiSVD<Eigen::MatrixXd>(jacobian, Eigen::ComputeThinU | Eigen::ComputeThinV);
+      Eigen::MatrixXd matrix_s = svd.singularValues().asDiagonal();
+      Eigen::MatrixXd pseudo_inverse = svd.matrixV() * matrix_s.inverse() * svd.matrixU().transpose();
+
       joint_position_delta = pseudo_inverse * cartesian_position_delta;
     }
 
-    // Apply velocity scaling for singularity.
-    joint_position_delta *= moveit_servo::velocityScalingFactorForSingularity(
-        joint_model_group_, current_state_, cartesian_position_delta, servo_params_, servo_status_);
+    // Get velocity scaling information for singularity.
+    std::pair<double, StatusCode> singularity_scaling_info = velocityScalingFactorForSingularity(
+        joint_model_group_, current_state_, cartesian_position_delta, servo_params_);
+    // Apply velocity scaling for singularity, if there was any scaling.
+    if (singularity_scaling_info.second != StatusCode::NO_WARNING)
+    {
+      servo_status_ = singularity_scaling_info.second;
+      RCLCPP_WARN_STREAM(LOGGER, getStatusMessage());
+      joint_position_delta *= singularity_scaling_info.first;
+    }
   }
   else
   {
     servo_status_ = StatusCode::INVALID;
-    RCLCPP_WARN_STREAM(LOGGER, "SERVO: Invalid twist command");
+    if (!valid_command)
+      RCLCPP_WARN_STREAM(LOGGER, "SERVO: Invalid twist command values.");
+    if (!has_transform)
+      RCLCPP_WARN_STREAM(LOGGER, "SERVO: No transform available for command frame " << command_frame);
   }
   return joint_position_delta;
 }

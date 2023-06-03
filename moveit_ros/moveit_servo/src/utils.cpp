@@ -42,6 +42,16 @@
 namespace moveit_servo
 {
 
+bool transformExists(const moveit::core::RobotStatePtr& current_state, const std::string frame_name)
+{
+  bool has_transform = false;
+  if (current_state->knowsFrameTransform(frame_name))
+  {
+    has_transform = true;
+  }
+  return has_transform;
+}
+
 bool isValidCommand(Eigen::VectorXd command)
 {
   bool isValid = true;
@@ -123,11 +133,14 @@ trajectory_msgs::msg::JointTrajectory composeTrajectoryMessage(const servo::Para
   return joint_trajectory;
 }
 
-double velocityScalingFactorForSingularity(const moveit::core::JointModelGroup* joint_model_group,
-                                           const moveit::core::RobotStatePtr& current_state,
-                                           const Eigen::VectorXd& target_delta_x, const servo::Params& servo_params,
-                                           StatusCode& servo_status)
+std::pair<double, StatusCode>
+velocityScalingFactorForSingularity(const moveit::core::JointModelGroup* joint_model_group,
+                                    const moveit::core::RobotStatePtr& current_state,
+                                    const Eigen::VectorXd& target_delta_x, const servo::Params& servo_params)
 {
+  // We need to send information back about if we are halting, moving away or towards the singularity.
+  StatusCode servo_status = StatusCode::NO_WARNING;
+
   // Get the thresholds.
   const double lower_singularity_threshold = servo_params.lower_singularity_threshold;
   const double hard_stop_singularity_threshold = servo_params.hard_stop_singularity_threshold;
@@ -204,18 +217,44 @@ double velocityScalingFactorForSingularity(const moveit::core::JointModelGroup* 
     velocity_scale -=
         (current_condition_number - lower_singularity_threshold) / (upper_threshold - lower_singularity_threshold);
 
-    servo_status = moving_towards_singularity ? moveit_servo::StatusCode::DECELERATE_FOR_APPROACHING_SINGULARITY :
-                                                moveit_servo::StatusCode::DECELERATE_FOR_LEAVING_SINGULARITY;
+    servo_status = moving_towards_singularity ? StatusCode::DECELERATE_FOR_APPROACHING_SINGULARITY :
+                                                StatusCode::DECELERATE_FOR_LEAVING_SINGULARITY;
     ;
   }
   // If condition number has crossed hard stop limit, halt the robot.
   else if (!is_below_hard_stop_limit)
   {
-    servo_status = moveit_servo::StatusCode::HALT_FOR_SINGULARITY;
+    servo_status = StatusCode::HALT_FOR_SINGULARITY;
     velocity_scale = 0.0;
   }
 
-  return velocity_scale;
+  return std::make_pair(velocity_scale, servo_status);
+}
+
+double velocityScalingFactor(const Eigen::VectorXd velocities, const moveit::core::JointBoundsVector joint_bounds,
+                             double scaling_override)
+{
+  // If override value is close to zero, user is not overriding the scaling
+  if (scaling_override < 0.01)
+  {
+    double bounded_vel;
+    std::vector<double> velocity_scaling_factors;  // The allowable fraction of computed veclocity
+
+    for (size_t i = 0; i < joint_bounds.size(); i++)
+    {
+      const auto joint_bound = (*joint_bounds[i])[0];
+      if (joint_bound.velocity_bounded_ && velocities[i] != 0.0)
+      {
+        // Find the ratio of clamped velocity to original velocity
+        bounded_vel = std::clamp(velocities[i], joint_bound.min_velocity_, joint_bound.max_velocity_);
+        velocity_scaling_factors.push_back(bounded_vel / velocities[i]);
+      }
+    }
+    // Find the lowest scaling factor, this helps preserve cartesian motion.
+    scaling_override = *std::min_element(velocity_scaling_factors.begin(), velocity_scaling_factors.end());
+  }
+
+  return scaling_override;
 }
 
 }  // namespace moveit_servo
