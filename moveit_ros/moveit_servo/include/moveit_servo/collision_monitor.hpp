@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Title     : collision_check.h
+ * Title     : collision_monitor.hpp
  * Project   : moveit_servo
  * Created   : 1/11/2019
  * Author    : Brian O'Neil, Andy Zelenak, Blake Anderson
@@ -92,7 +92,7 @@ private:
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
 
   // Robot state and collision matrix from planning scene
-  std::shared_ptr<moveit::core::RobotState> current_state_;
+  std::shared_ptr<moveit::core::RobotState> robot_state_;
 
   // Scale robot velocity according to collision proximity and user-defined thresholds.
   // I scaled exponentially (cubic power) so velocity drops off quickly after the threshold.
