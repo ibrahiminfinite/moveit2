@@ -39,8 +39,7 @@
 
 #include <std_msgs/msg/float64.hpp>
 
-#include <moveit_servo/collision_check.h>
-// #include <moveit_servo/make_shared_from_pool.h>
+#include <moveit_servo/collision_monitor.hpp>
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.collision_check");
 static const double MIN_RECOMMENDED_COLLISION_RATE = 10;
