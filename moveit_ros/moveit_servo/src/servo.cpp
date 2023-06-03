@@ -326,11 +326,11 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
 
   CommandType incomingType = incomingCommandType();
 
-  if (incomingType == CommandType::JOINT_JOG && command.index() == 0)
+  if (incomingType == CommandType::JOINT_JOG && command.index() == static_cast<size_t>(incomingType))
   {
     next_joint_positions = jointDeltaFromCommand(std::get<JointJog>(command));
   }
-  else if (incomingType == CommandType::TWIST && command.index() == 1)
+  else if (incomingType == CommandType::TWIST && command.index() == static_cast<size_t>(incomingType))
   {
     next_joint_positions = jointDeltaFromCommand(std::get<Twist>(command));
   }
