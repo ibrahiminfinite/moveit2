@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Title     : collision_check.h
+ * Title     : collision_monitor.hpp
  * Project   : moveit_servo
  * Created   : 1/11/2019
  * Author    : Brian O'Neil, Andy Zelenak, Blake Anderson
