@@ -34,7 +34,7 @@
 /*      Title     : utils.cpp
  *      Project   : moveit_servo
  *      Created   : 17/05/2023
- *      Author    : V Mohammed Ibrahim
+ *      Author    : Andy Zelenak, V Mohammed Ibrahim
  */
 
 #include <moveit_servo/utils.hpp>
@@ -231,7 +231,7 @@ velocityScalingFactorForSingularity(const moveit::core::JointModelGroup* joint_m
   return std::make_pair(velocity_scale, servo_status);
 }
 
-double velocityScalingFactor(const Eigen::VectorXd velocities, const moveit::core::JointBoundsVector joint_bounds,
+double velocityScalingFactor(const Eigen::VectorXd& velocities, const moveit::core::JointBoundsVector& joint_bounds,
                              double scaling_override)
 {
   // If override value is close to zero, user is not overriding the scaling
@@ -255,6 +255,26 @@ double velocityScalingFactor(const Eigen::VectorXd velocities, const moveit::cor
   }
 
   return scaling_override;
+}
+
+std::vector<int> jointsToHalt(const Eigen::VectorXd& positions, const Eigen::VectorXd& velocities,
+                              const moveit::core::JointBoundsVector& joint_bounds, double margin)
+{
+  std::vector<int> joint_idxs_to_halt;
+  for (size_t i = 0; i < joint_bounds.size(); i++)
+  {
+    const auto joint_bound = (*joint_bounds[i])[0];
+    if (joint_bound.position_bounded_)
+    {
+      const bool negative_bound = velocities[i] < 0 && positions[i] < (joint_bound.min_position_ + margin);
+      const bool positive_bound = velocities[i] > 0 && positions[i] > (joint_bound.max_position_ - margin);
+      if (negative_bound || positive_bound)
+      {
+        joint_idxs_to_halt.push_back(i);
+      }
+    }
+  }
+  return joint_idxs_to_halt;
 }
 
 }  // namespace moveit_servo

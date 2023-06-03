@@ -91,17 +91,17 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   if (!transformExists(current_state_, servo_params_.planning_frame))
   {
     servo_status_ = StatusCode::INVALID;
-    RCLCPP_ERROR_STREAM(LOGGER, "SERVO: No transform available for planning frame " << servo_params_.planning_frame);
+    RCLCPP_ERROR_STREAM(LOGGER, "No transform available for planning frame " << servo_params_.planning_frame);
   }
   else if (!transformExists(current_state_, servo_params_.ee_frame_name))
   {
     servo_status_ = StatusCode::INVALID;
-    RCLCPP_ERROR_STREAM(LOGGER, "SERVO: No transform available for end-effector frame " << servo_params_.ee_frame_name);
+    RCLCPP_ERROR_STREAM(LOGGER, "No transform available for end-effector frame " << servo_params_.ee_frame_name);
   }
   else
   {
     servo_status_ = StatusCode::NO_WARNING;
-    RCLCPP_INFO_STREAM(LOGGER, "SERVO: Initialized successfully");
+    RCLCPP_INFO_STREAM(LOGGER, "Initialized successfully");
   }
 }
 
@@ -220,7 +220,7 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
   servo_status_ = StatusCode::NO_WARNING;
 
   // Joint position and veloctiy variables.
-  // The smoother needs a std::vector input, so we create std::vector's but make Eigen::Map for cleaner computation.
+  // The smoother needs a std::vector input, so we create std::vectors but make Eigen::Map for cleaner computation.
   std::vector<double> current_joint_pos(num_joints_), next_joint_pos(num_joints_);
   Eigen::Map<Eigen::VectorXd> current_joint_positions(current_joint_pos.data(), current_joint_pos.size());
   Eigen::Map<Eigen::VectorXd> next_joint_positions(next_joint_pos.data(), next_joint_pos.size());
@@ -269,33 +269,24 @@ sensor_msgs::msg::JointState Servo::getNextJointState(const ServoInput& command)
     next_joint_positions = current_joint_positions + (next_joint_velocities * servo_params_.publish_period);
 
     // Check if any joints are going past joint position limits
-    std::vector<int> joint_idxs_to_halt;
-    for (size_t i = 0; i < joint_bounds_.size(); i++)
-    {
-      const auto joint_bound = (*joint_bounds_[i])[0];
-      if (joint_bound.position_bounded_)
-      {
-        const bool negative_bound =
-            next_joint_velocities[i] < 0 &&
-            next_joint_positions[i] < (joint_bound.min_position_ + servo_params_.joint_limit_margin);
-        const bool positive_bound =
-            next_joint_velocities[i] > 0 &&
-            next_joint_positions[i] > (joint_bound.max_position_ - servo_params_.joint_limit_margin);
-        if (negative_bound || positive_bound)
-        {
-          RCLCPP_WARN_STREAM(LOGGER, "SERVO: Joint position limit on joint " << joint_names_[i]);
-          joint_idxs_to_halt.push_back(i);
-        }
-      }
-    }
+    std::vector<int> joint_idxs_to_halt =
+        jointsToHalt(next_joint_positions, next_joint_velocities, joint_bounds_, servo_params_.joint_limit_margin);
 
     // Apply halting if any joints need to be halted.
     if (!joint_idxs_to_halt.empty())
     {
       servo_status_ = StatusCode::JOINT_BOUND;
 
+      std::stringstream halting_joint_names;
+      for (const int idx : joint_idxs_to_halt)
+      {
+        halting_joint_names << joint_names_[idx] + " ";
+      }
+      RCLCPP_WARN_STREAM(LOGGER, "Joint position limit reached on joints: " << halting_joint_names.str());
+
       const bool all_joint_halt =
-          incomingCommandType() == CommandType::JOINT_JOG && servo_params_.halt_all_joints_in_joint_mode;
+          (incomingCommandType() == CommandType::JOINT_JOG && servo_params_.halt_all_joints_in_joint_mode) ||
+          (incomingCommandType() == CommandType::TWIST && servo_params_.halt_all_joints_in_cartesian_mode);
 
       if (all_joint_halt)
       {
@@ -369,7 +360,7 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const JointJog& command)
   else
   {
     servo_status_ = StatusCode::INVALID;
-    RCLCPP_WARN_STREAM(LOGGER, "SERVO: Invalid joint velocity command");
+    RCLCPP_WARN_STREAM(LOGGER, "Invalid joint velocity command");
   }
   return joint_poition_delta;
 }
@@ -445,9 +436,9 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
   {
     servo_status_ = StatusCode::INVALID;
     if (!valid_command)
-      RCLCPP_WARN_STREAM(LOGGER, "SERVO: Invalid twist command values.");
+      RCLCPP_WARN_STREAM(LOGGER, "Invalid twist command values.");
     if (!has_transform)
-      RCLCPP_WARN_STREAM(LOGGER, "SERVO: No transform available for command frame " << command_frame);
+      RCLCPP_WARN_STREAM(LOGGER, "No transform available for command frame " << command_frame);
   }
   return joint_position_delta;
 }

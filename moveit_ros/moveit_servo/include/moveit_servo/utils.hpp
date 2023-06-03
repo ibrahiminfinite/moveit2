@@ -34,7 +34,7 @@
 /*      Title     : utils.hpp
  *      Project   : moveit_servo
  *      Created   : 17/05/2023
- *      Author    : V Mohammed Ibrahim
+ *      Author    : Andy Zelenak, V Mohammed Ibrahim
  */
 
 #pragma once
@@ -104,7 +104,18 @@ velocityScalingFactorForSingularity(const moveit::core::JointModelGroup* joint_m
  * @param scaling_override The user defined velocity scaling override.
  * @return The velocity scaling factor.
  */
-double velocityScalingFactor(Eigen::VectorXd velocities, moveit::core::JointBoundsVector joint_bounds,
+double velocityScalingFactor(const Eigen::VectorXd& velocities, const moveit::core::JointBoundsVector& joint_bounds,
                              double scaling_override);
+
+/**
+ * \brief Finds the joints that are going past allowable joint limits.
+ * @param positions The joints positions.
+ * @param velocities The current commanded velocities.
+ * @param joint_bounds The bounding information for the robot joints.
+ * @param margin The buffer before the actual limit.
+ * @return The joints that are violating the specified position limits.
+ */
+std::vector<int> jointsToHalt(const Eigen::VectorXd& positions, const Eigen::VectorXd& velocities,
+                              const moveit::core::JointBoundsVector& joint_bounds, double margin);
 
 }  // namespace moveit_servo
