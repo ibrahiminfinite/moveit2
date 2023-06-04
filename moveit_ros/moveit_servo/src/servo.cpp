@@ -70,30 +70,29 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
       "~/collision_velocity_scale", rclcpp::SystemDefaultsQoS(),
       [this](const std_msgs::msg::Float64::ConstSharedPtr& msg) { return collisionVelocityScaleCB(msg); });
 
+  // Get the robot state and joint model group info.
   current_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   joint_model_group_ = current_state_->getJointModelGroup(servo_params_.move_group_name);
-
-  // Get necessary information about joints
-  joint_names_ = joint_model_group_->getActiveJointModelNames();
-  joint_bounds_ = joint_model_group_->getActiveJointModelsBounds();
-  num_joints_ = joint_names_.size();
 
   if (joint_model_group_ == nullptr)
   {
     RCLCPP_ERROR_STREAM(LOGGER, "Invalid move group name: `" << servo_params_.move_group_name << '`');
     throw std::runtime_error("Invalid move group name");
   }
+  else
+  {
+    // Create the command processor to handle the different types of servo inputs.
+    command_processor_ =
+        std::make_unique<CommandProcessor>(joint_model_group_, current_state_, servo_params_, servo_status_);
 
-  // Load the IK solver if one exists for the robot
-  setIKSolver();
+    // Get necessary information about joints
+    joint_names_ = joint_model_group_->getActiveJointModelNames();
+    joint_bounds_ = joint_model_group_->getActiveJointModelsBounds();
+    num_joints_ = joint_names_.size();
+  }
+
   // Load the smoothing plugin
   setSmoothingPlugin();
-
-  // Create PID controllers for pose tracking
-  rclcpp::WallRate controller_rate(1 / servo_params_.publish_period);
-  controller_period_ = controller_rate.period().count();
-  pid_controllers_ = initializeControllers(servo_params_);
-  RCLCPP_INFO_STREAM(LOGGER, "PID controllers created.");
 
   // Check if the tansforms to planning frame and end-effector frame exists.
   if (!transformExists(current_state_, servo_params_.planning_frame))
@@ -140,27 +139,6 @@ void Servo::createPlanningSceneMonitor()
   else
   {
     planning_scene_monitor_->requestPlanningSceneState();
-  }
-}
-
-void Servo::setIKSolver()
-{
-  // Get the IK solver for the group
-  ik_solver_ = joint_model_group_->getSolverInstance();
-  if (!ik_solver_)
-  {
-    RCLCPP_WARN(
-        LOGGER,
-        "No kinematics solver instantiated for group '%s'. Will use inverse Jacobian for servo calculations instead.",
-        joint_model_group_->getName().c_str());
-  }
-  else if (!ik_solver_->supportsGroup(joint_model_group_))
-  {
-    ik_solver_ = nullptr;
-    RCLCPP_WARN(LOGGER,
-                "The loaded kinematics plugin does not support group '%s'. Will use inverse Jacobian for servo "
-                "calculations instead.",
-                joint_model_group_->getName().c_str());
   }
 }
 
@@ -336,11 +314,11 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
 
   if (incomingType == CommandType::JOINT_JOG && command.index() == static_cast<size_t>(incomingType))
   {
-    next_joint_positions = jointDeltaFromCommand(std::get<JointJog>(command));
+    next_joint_positions = command_processor_->jointDeltaFromCommand(std::get<JointJog>(command));
   }
   else if (incomingType == CommandType::TWIST && command.index() == static_cast<size_t>(incomingType))
   {
-    next_joint_positions = jointDeltaFromCommand(std::get<Twist>(command));
+    next_joint_positions = command_processor_->jointDeltaFromCommand(std::get<Twist>(command));
   }
   // else if (incomingType == CommandType::POSE && command.index() == 2)
   // {
@@ -352,190 +330,6 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
     RCLCPP_WARN_STREAM(LOGGER, "SERVO : Invalid command type, check if proper command type has been set.");
   }
   return next_joint_positions;
-}
-
-Eigen::VectorXd Servo::jointDeltaFromCommand(const JointJog& command)
-{
-  // Find the target joint position based on the commanded joint velocity
-  Eigen::VectorXd joint_poition_delta(num_joints_);
-  joint_poition_delta.setZero();
-
-  if (isValidCommand(command))
-  {
-    // The incoming command should be in rad/s
-    joint_poition_delta = command * servo_params_.publish_period;
-  }
-  else
-  {
-    servo_status_ = StatusCode::INVALID;
-    RCLCPP_WARN_STREAM(LOGGER, "Invalid joint velocity command");
-  }
-  return joint_poition_delta;
-}
-
-Eigen::VectorXd Servo::jointDeltaFromCommand(const Twist& command)
-{
-  Eigen::VectorXd joint_position_delta(num_joints_);
-  Eigen::VectorXd cartesian_position_delta;
-
-  std::string command_frame = command.frame_id;
-  const std::string planning_frame = servo_params_.planning_frame;
-
-  bool has_transform = transformExists(current_state_, command_frame);
-  bool valid_command = isValidCommand(command.velocities);
-  if (has_transform && valid_command)
-  {
-    Twist transformed_twist = command;
-
-    if (command_frame.empty())
-    {
-      RCLCPP_WARN_STREAM(LOGGER,
-                         "No frame specified for command, will use planning_frame: " << servo_params_.planning_frame);
-      command_frame = planning_frame;
-    }
-    // Transform the command to the MoveGroup planning frame
-    if (command.frame_id != planning_frame)
-    {
-      // We solve (planning_frame -> base -> cmd.header.frame_id)
-      // by computing (base->planning_frame)^-1 * (base->cmd.header.frame_id)
-      const Eigen::Isometry3d planning_frame_transfrom =
-          current_state_->getGlobalLinkTransform(command_frame).inverse() *
-          current_state_->getGlobalLinkTransform(planning_frame);
-
-      // Apply the transformation to the command vector
-      transformed_twist.frame_id = planning_frame;
-      transformed_twist.velocities.head<3>() = planning_frame_transfrom.linear() * command.velocities.head<3>();
-      transformed_twist.velocities.tail<3>() = planning_frame_transfrom.linear() * command.velocities.tail<3>();
-    }
-
-    // Compute the cartesian position delta based on incoming command, assumed to be in m/s
-    cartesian_position_delta = transformed_twist.velocities * servo_params_.publish_period;
-
-    // Compute the required change in joint angles.
-    if (ik_solver_)
-    {
-      // Use robot's IK solver to get joint position delta.
-      joint_position_delta = detlaFromIkSolver(cartesian_position_delta);
-    }
-    else
-    {
-      // Robot does not have an IK solver, use inverse Jacobian to compute IK.
-      Eigen::MatrixXd jacobian = current_state_->getJacobian(joint_model_group_);
-      Eigen::JacobiSVD<Eigen::MatrixXd> svd =
-          Eigen::JacobiSVD<Eigen::MatrixXd>(jacobian, Eigen::ComputeThinU | Eigen::ComputeThinV);
-      Eigen::MatrixXd matrix_s = svd.singularValues().asDiagonal();
-      Eigen::MatrixXd pseudo_inverse = svd.matrixV() * matrix_s.inverse() * svd.matrixU().transpose();
-
-      joint_position_delta = pseudo_inverse * cartesian_position_delta;
-    }
-
-    // Get velocity scaling information for singularity.
-    std::pair<double, StatusCode> singularity_scaling_info = velocityScalingFactorForSingularity(
-        joint_model_group_, current_state_, cartesian_position_delta, servo_params_);
-    // Apply velocity scaling for singularity, if there was any scaling.
-    if (singularity_scaling_info.second != StatusCode::NO_WARNING)
-    {
-      servo_status_ = singularity_scaling_info.second;
-      RCLCPP_WARN_STREAM(LOGGER, getStatusMessage());
-      joint_position_delta *= singularity_scaling_info.first;
-    }
-  }
-  else
-  {
-    servo_status_ = StatusCode::INVALID;
-    if (!valid_command)
-      RCLCPP_WARN_STREAM(LOGGER, "Invalid twist command values.");
-    if (!has_transform)
-      RCLCPP_WARN_STREAM(LOGGER, "No transform available for command frame " << command_frame);
-  }
-  return joint_position_delta;
-}
-
-Eigen::VectorXd Servo::jointDeltaFromCommand(const Pose& command)
-{
-  Eigen::VectorXd joint_position_delta(num_joints_);
-
-  std::string command_frame = command.frame_id;
-  const std::string planning_frame = servo_params_.planning_frame;
-
-  // Check if frame is valid
-  bool has_transform = transformExists(current_state_, command_frame);
-  // TODO : make validation function for Isometry 3D
-  if (has_transform)
-  {
-    Pose target_pose = command;
-    const Eigen::Isometry3d planning_frame_transform = current_state_->getGlobalLinkTransform(planning_frame);
-    const Eigen::Isometry3d ee_pose = current_state_->getGlobalLinkTransform(servo_params_.ee_frame_name);
-    // Convert frame to planning frame
-    if (command_frame != planning_frame)
-    {
-      target_pose.pose = planning_frame_transform * command.pose;
-      target_pose.frame_id = planning_frame;
-    }
-
-    // Get pose of end-effector in planning frame
-    const Eigen::Isometry3d planning_frame_ee_pose = planning_frame_transform * ee_pose;
-
-    // TODO : Check if we are already at given pose
-
-    Twist target_twist;
-    target_twist.frame_id = planning_frame;
-    // Compute the linear error and required velocities.
-    auto linear_error = target_pose.pose.translation() - planning_frame_ee_pose.translation();
-    target_twist.velocities[0] = pid_controllers_["x"].computeCommand(linear_error[0], controller_period_);
-    target_twist.velocities[1] = pid_controllers_["y"].computeCommand(linear_error[1], controller_period_);
-    target_twist.velocities[2] = pid_controllers_["z"].computeCommand(linear_error[2], controller_period_);
-
-    // TODO : Compute angular error and required velocities
-    Eigen::Quaterniond q_target(target_pose.pose.rotation());
-    Eigen::Quaterniond q_current(planning_frame_ee_pose.rotation());
-    Eigen::Quaterniond q_error = q_target * q_current.inverse();
-    Eigen::AngleAxisd axis_angle(q_error);
-    double angular_velocity = pid_controllers_["q"].computeCommand(axis_angle.angle(), controller_period_);
-    target_twist.velocities[3] = angular_velocity * axis_angle.axis()[0];
-    target_twist.velocities[4] = angular_velocity * axis_angle.axis()[1];
-    target_twist.velocities[5] = angular_velocity * axis_angle.axis()[2];
-
-    // Call jointDeltaFromCommand with twist
-    joint_position_delta = jointDeltaFromCommand(target_twist);
-  }
-
-  return joint_position_delta;
-}
-
-Eigen::VectorXd Servo::detlaFromIkSolver(Eigen::VectorXd cartesian_position_delta)
-{
-  Eigen::VectorXd delta_theta(num_joints_);
-  std::vector<double> current_joint_positions(num_joints_);
-
-  current_state_->copyJointGroupPositions(joint_model_group_, current_joint_positions);
-
-  const Eigen::Isometry3d base_to_tip_frame_transform =
-      current_state_->getGlobalLinkTransform(ik_solver_->getBaseFrame()).inverse() *
-      current_state_->getGlobalLinkTransform(ik_solver_->getTipFrame());
-
-  geometry_msgs::msg::Pose next_pose = poseFromCartesianDelta(cartesian_position_delta, base_to_tip_frame_transform);
-
-  // setup for IK call
-  std::vector<double> solution(num_joints_);
-  moveit_msgs::msg::MoveItErrorCodes err;
-  kinematics::KinematicsQueryOptions opts;
-  opts.return_approximate_solution = true;
-  if (ik_solver_->searchPositionIK(next_pose, current_joint_positions, servo_params_.publish_period / 2.0, solution,
-                                   err, opts))
-  {
-    // find the difference in joint positions that will get us to the desired pose
-    for (size_t i = 0; i < num_joints_; ++i)
-    {
-      delta_theta.coeffRef(i) = solution.at(i) - current_joint_positions[i];
-    }
-  }
-  else
-  {
-    RCLCPP_WARN_STREAM(LOGGER, "Could not find IK solution for requested motion, got error code " << err.val);
-  }
-
-  return delta_theta;
 }
 
 StatusCode Servo::getStatus()

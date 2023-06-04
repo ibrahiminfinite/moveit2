@@ -42,8 +42,6 @@
 // Standard Library
 #include <variant>
 
-#include <control_toolbox/pid.hpp>
-
 // ROS
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <pluginlib/class_loader.hpp>
@@ -51,47 +49,34 @@
 #include <geometry_msgs/msg/pose.hpp>
 
 // MoveIt
-#include <moveit/kinematics_base/kinematics_base.h>
 #include <moveit/online_signal_smoothing/smoothing_base_class.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit_servo/collision_monitor.hpp>
-#include <moveit_servo_lib_parameters.hpp>
+#include <moveit_servo/command_processor.hpp>
 #include <moveit_servo/status_codes.hpp>
+#include <moveit_servo_lib_parameters.hpp>
 
 namespace moveit_servo
 {
-
-// Datatypes used by servo
-
-typedef Eigen::VectorXd JointJog;
-
-struct Pose
-{
-  std::string frame_id;
-  Eigen::Isometry3d pose;
-};
-
-struct Twist
-{
-  std::string frame_id;
-  Eigen::Vector<double, 6> velocities;
-};
-
-typedef std::variant<JointJog, Twist, Pose> ServoInput;
-
-enum class CommandType
-{
-  JOINT_JOG = 0,
-  TWIST,
-  POSE
-};
 
 class Servo
 {
 public:
   Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::ParamListener>& servo_param_listener);
 
+  /**
+   * \brief Computes the required joint state to follow the given command.
+   * @param command The command to follow, std::variant type, can handle JointJog, Twist and Pose.
+   * @return The required joint state.
+   */
   sensor_msgs::msg::JointState getNextJointState(const ServoInput& command);
+
+  /**
+   * \brief Compute the change in joint position for the received command.
+   * @param command The incoming servo command.
+   * @return The joint position change required (delta).
+   */
+  Eigen::VectorXd jointDeltaFromCommand(const ServoInput& command);
 
   /**
    * \brief Set the type of incoming servo command.
@@ -119,34 +104,6 @@ public:
 
 private:
   /**
-   * \brief Compute the change in joint position for the received command.
-   * @param command The incoming servo command.
-   * @return The joint position change required (delta).
-   */
-  Eigen::VectorXd jointDeltaFromCommand(const ServoInput& command);
-
-  /**
-   * \brief Compute the change in joint position for the given joint jog command.
-   * @param command The joint jog command.
-   * @return The joint position change required (delta).
-   */
-  Eigen::VectorXd jointDeltaFromCommand(const JointJog& command);
-
-  /**
-   * \brief Compute the change in joint position for the given twist command.
-   * @param command The twist command.
-   * @return The joint position change required (delta).
-   */
-  Eigen::VectorXd jointDeltaFromCommand(const Twist& command);
-
-  /**
-   * \brief Compute the change in joint position for the given pose command.
-   * @param command The pose command.
-   * @return The joint position change required (delta).
-   */
-  Eigen::VectorXd jointDeltaFromCommand(const Pose& command);
-
-  /**
    * \brief Validate the servo parameters
    * @param servo_params The servo parameters
    */
@@ -156,11 +113,6 @@ private:
    * \brief Creates the planning scene monitor used by servo
    */
   void createPlanningSceneMonitor();
-
-  /**
-   * \brief Set the IK solver that servo will use. If the robot does not have one, inverse jacobian will be used instead.
-   */
-  void setIKSolver();
 
   /**
    * \brief create and initialize the smoothing plugin to be used by servo.
@@ -177,17 +129,10 @@ private:
    */
   void updateParams();
 
-  /**
-   * \brief Computes the required change in joint angles for given cartesian change, using the robots IK solver.
-   * @param carteisan_position_delta The change in cartesian position.
-   * @return The required joing angle deltas.
-   */
-  Eigen::VectorXd detlaFromIkSolver(Eigen::VectorXd cartesian_position_delta);
-
   // Variables
 
   const rclcpp::Node::SharedPtr node_;
-
+  std::unique_ptr<CommandProcessor> command_processor_;
   std::atomic<CommandType> incoming_command_type_;
 
   servo::Params servo_params_;
@@ -195,7 +140,7 @@ private:
 
   moveit::core::RobotStatePtr current_state_;
   const moveit::core::JointModelGroup* joint_model_group_;
-  kinematics::KinematicsBaseConstPtr ik_solver_ = nullptr;
+
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
 
   std::atomic<double> collision_velocity_scale_ = 1.0;
@@ -210,9 +155,6 @@ private:
   moveit::core::JointBoundsVector joint_bounds_;
 
   StatusCode servo_status_;
-
-  uint64_t controller_period_;
-  std::map<std::string, control_toolbox::Pid> pid_controllers_;
 };
 
 }  // namespace moveit_servo
