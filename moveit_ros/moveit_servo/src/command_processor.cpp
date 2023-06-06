@@ -158,6 +158,57 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Twist& command)
   return joint_position_delta;
 }
 
+Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Pose& command)
+{
+  Eigen::VectorXd joint_position_delta(num_joints_);
+
+  // TODO: validate command
+  const std::string& command_frame = command.frame_id;
+  const std::string& planning_frame = servo_params_.planning_frame;
+  const bool has_transform = transformExists(robot_state_, command_frame);
+
+  Eigen::Isometry3d transformed_pose;
+  if (has_transform)
+  {
+    Eigen::Isometry3d ee_pose = getEndEffectorPose();
+    // Convert commanded pose to planning frame.
+    if (command_frame != planning_frame)
+    {
+      // We solve (planning_frame -> base -> command_frame)
+      // by computing (base->planning_frame)^-1 * (base->command_frame)
+      const Eigen::Isometry3d command_to_planning_tf = robot_state_->getGlobalLinkTransform(command_frame).inverse() *
+                                                       robot_state_->getGlobalLinkTransform(planning_frame);
+
+      transformed_pose = command.pose * command_to_planning_tf;
+    }
+
+    // Compute twist
+    Twist target_twist;
+    target_twist.frame_id = planning_frame;
+    const Eigen::Isometry3d pose_delta = ee_pose.inverse() * transformed_pose;
+    target_twist.velocities[0] = controllers_["x"].computeCommand(pose_delta.translation().x(), controller_period_);
+    target_twist.velocities[1] = controllers_["y"].computeCommand(pose_delta.translation().y(), controller_period_);
+    target_twist.velocities[2] = controllers_["z"].computeCommand(pose_delta.translation().z(), controller_period_);
+    target_twist.velocities[0] = 0.0;
+    target_twist.velocities[0] = 0.0;
+    target_twist.velocities[0] = 0.0;
+
+    joint_position_delta = jointDeltaFromCommand(target_twist);
+  }
+  else
+  {
+    servo_status_ = StatusCode::INVALID;
+    if (!has_transform)
+      RCLCPP_WARN_STREAM(LOGGER, "No transform available for command frame: " << command_frame);
+  }
+
+  for (auto& controller : controllers_)
+  {
+    controller.second.reset();
+  }
+  return joint_position_delta;
+}
+
 void CommandProcessor::setIKSolver()
 {
   // Get the IK solver for the group

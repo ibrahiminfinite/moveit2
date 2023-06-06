@@ -203,10 +203,10 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
   {
     target_joint_positions = command_processor_->jointDeltaFromCommand(std::get<Twist>(command));
   }
-  // else if (incomingType == CommandType::POSE && command.index() == 2)
-  // {
-  //   target_joint_positions = jointDeltaFromCommand(std::get<Pose>(command));
-  // }
+  else if (incoming_type == CommandType::POSE && command.index() == static_cast<size_t>(incoming_type))
+  {
+    target_joint_positions = command_processor_->jointDeltaFromCommand(std::get<Pose>(command));
+  }
   else
   {
     servo_status_ = StatusCode::INVALID;

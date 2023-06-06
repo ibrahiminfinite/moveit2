@@ -71,6 +71,11 @@ add_executable(demo_twist demos/cpp_interface/demo_twist.cpp )
 target_link_libraries(demo_twist moveit_servo_lib)
 ament_target_dependencies(demo_twist ${THIS_PACKAGE_INCLUDE_DEPENDS})
 
+# An executable node for the pose demo
+add_executable(demo_pose demos/cpp_interface/demo_pose.cpp )
+target_link_libraries(demo_pose moveit_servo_lib)
+ament_target_dependencies(demo_pose ${THIS_PACKAGE_INCLUDE_DEPENDS})
+
 #############
 ## Install ##
 #############
@@ -92,6 +97,7 @@ install(
   TARGETS
   demo_joint_jog
   demo_twist
+  demo_pose
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/moveit_servo
