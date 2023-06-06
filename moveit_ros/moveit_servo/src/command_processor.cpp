@@ -228,4 +228,10 @@ const std::string CommandProcessor::getStatusMessage()
   return SERVO_STATUS_CODE_MAP.at(servo_status_);
 }
 
+const Eigen::Isometry3d CommandProcessor::getEndEffectorPose()
+{
+  return robot_state_->getGlobalLinkTransform(servo_params_.ee_frame_name).inverse() *
+         robot_state_->getGlobalLinkTransform(servo_params_.planning_frame);
+}
+
 }  // namespace moveit_servo

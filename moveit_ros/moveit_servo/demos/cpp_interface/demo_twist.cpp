@@ -81,7 +81,8 @@ int main(int argc, char* argv[])
   RCLCPP_INFO_STREAM(LOGGER, "SERVO STATUS: " << servo.getStatusMessage());
   while (rclcpp::ok() && servo.getStatus() == StatusCode::NO_WARNING)
   {
-    // Move end-effector in the +z direction at 10 cm/s while turning around z axis in the +ve direction.
+    // Move end-effector in the +z direction at 10 cm/s
+    // while turning around z axis in the +ve direction at 0.5 rad/s
     Twist twist{ servo_params.ee_frame_name, { 0.0, 0.0, 0.1, 0.0, 0.0, 0.5 } };
 
     auto joint_state = servo.getNextJointState(twist);

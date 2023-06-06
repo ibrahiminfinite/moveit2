@@ -398,4 +398,8 @@ void Servo::validateParams(const servo::Params& servo_params)
   }
 }
 
+const Eigen::Isometry3d Servo::getEndEffectorPose()
+{
+  return command_processor_->getEndEffectorPose();
+}
 }  // namespace moveit_servo

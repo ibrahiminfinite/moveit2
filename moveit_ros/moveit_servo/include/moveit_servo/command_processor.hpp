@@ -81,6 +81,11 @@ public:
    */
   Eigen::VectorXd jointDeltaFromCommand(const Pose& command);
 
+  /**
+   * \brief Returns the end effector pose in planning frame
+   */
+  const Eigen::Isometry3d getEndEffectorPose();
+
 private:
   /**
    * \brief Set the IK solver that servo will use. If the robot does not have one, inverse jacobian will be used instead.
