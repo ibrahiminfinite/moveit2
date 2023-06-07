@@ -175,13 +175,22 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Pose& command)
     // TODO: Convert frame as necessary, currently poses are assumed to be in planning frame.
 
     // Compute twist
-    const Eigen::Vector3d linear_delta = command.pose.translation() - getEndEffectorPose().translation();
+    const Eigen::Isometry3d ee_pose{ getEndEffectorPose() };
+    const Eigen::Vector3d linear_delta = command.pose.translation() - ee_pose.translation();
     Twist twist;
     twist.frame_id = planning_frame;
     twist.velocities.setZero();
+
     twist.velocities[0] = controllers_["x"].computeCommand(linear_delta.x(), controller_period_);
     twist.velocities[1] = controllers_["y"].computeCommand(linear_delta.y(), controller_period_);
     twist.velocities[2] = controllers_["z"].computeCommand(linear_delta.z(), controller_period_);
+
+    Eigen::Quaterniond q_current(ee_pose.rotation()), q_target(command.pose.rotation());
+    Eigen::Quaterniond q_error = q_target * q_current.inverse();
+    Eigen::AngleAxisd angle_axis_error(q_error);
+    Eigen::Vector3d angular_delta = angle_axis_error.axis() * angle_axis_error.angle();
+
+    twist.velocities[5] = controllers_["q"].computeCommand(angular_delta.z(), controller_period_);
 
     joint_position_delta = jointDeltaFromCommand(twist);
   }

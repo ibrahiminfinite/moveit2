@@ -82,17 +82,17 @@ int main(int argc, char* argv[])
 
   // Get current pose of end-effector, this is in planning frame.
   Eigen::Isometry3d curr_pose = servo.getEndEffectorPose();
-
   Eigen::Isometry3d target_pose = curr_pose;
   target_pose.translation().x() += 0.1;
-  target_pose.translation().y() += 0.1;
-
+  target_pose.rotate(Eigen::AngleAxisd(M_PI / 4, Eigen::Vector3d::UnitZ()));
   Pose p1{ servo_params.planning_frame, target_pose };
 
   while (rclcpp::ok() && servo.getStatus() == StatusCode::NO_WARNING)
   {
     curr_pose = servo.getEndEffectorPose();
-    if (curr_pose.isApprox(target_pose, 0.001))
+    const bool satisfiesAngularTolerance = curr_pose.rotation().isApprox(target_pose.rotation(), 0.01);
+    const bool satisfiesLinearTolerance = curr_pose.translation().isApprox(target_pose.translation(), 0.001);
+    if (satisfiesAngularTolerance && satisfiesLinearTolerance)
     {
       RCLCPP_INFO_STREAM(LOGGER, "REACHED TARGET POSE");
       break;
