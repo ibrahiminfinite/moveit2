@@ -46,6 +46,7 @@
 #include <tf2_eigen/tf2_eigen.hpp>
 
 #include <moveit/kinematics_base/kinematics_base.h>
+#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 
 #include <moveit_servo/datatypes.hpp>
 #include <moveit_servo/status_codes.hpp>
@@ -57,7 +58,8 @@ namespace moveit_servo
 class CommandProcessor
 {
 public:
-  CommandProcessor(const moveit::core::JointModelGroup* joint_model_group, moveit::core::RobotStatePtr& current_state,
+  CommandProcessor(const planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                   const moveit::core::JointModelGroup* joint_model_group, moveit::core::RobotStatePtr& current_state,
                    servo::Params& servo_params, StatusCode& servo_status);
 
   /**
@@ -113,6 +115,7 @@ private:
 
   // Variables
   size_t num_joints_;
+  const planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor_;
   const moveit::core::JointModelGroup* joint_model_group_;
   moveit::core::RobotStatePtr& robot_state_;
   servo::Params& servo_params_;

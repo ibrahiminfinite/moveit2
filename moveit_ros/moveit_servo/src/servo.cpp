@@ -82,8 +82,8 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   else
   {
     // Create the command processor to handle the different types of servo inputs.
-    command_processor_ =
-        std::make_unique<CommandProcessor>(joint_model_group_, robot_state_, servo_params_, servo_status_);
+    command_processor_ = std::make_unique<CommandProcessor>(planning_scene_monitor_, joint_model_group_, robot_state_,
+                                                            servo_params_, servo_status_);
 
     // Get necessary information about joints
     joint_names_ = joint_model_group_->getActiveJointModelNames();

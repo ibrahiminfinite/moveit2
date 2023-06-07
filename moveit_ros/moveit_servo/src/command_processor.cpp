@@ -44,10 +44,12 @@ namespace moveit_servo
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.command_processor");
 
-CommandProcessor::CommandProcessor(const moveit::core::JointModelGroup* joint_model_group,
+CommandProcessor::CommandProcessor(const planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                                   const moveit::core::JointModelGroup* joint_model_group,
                                    moveit::core::RobotStatePtr& current_state, servo::Params& servo_params,
                                    StatusCode& servo_status)
-  : joint_model_group_{ joint_model_group }
+  : planning_scene_monitor_{ planning_scene_monitor }
+  , joint_model_group_{ joint_model_group }
   , robot_state_{ current_state }
   , servo_params_{ servo_params }
   , servo_status_{ servo_status }
@@ -55,7 +57,7 @@ CommandProcessor::CommandProcessor(const moveit::core::JointModelGroup* joint_mo
   num_joints_ = joint_model_group_->getActiveJointModelNames().size();
 
   // Create PID controllers for pose tracking
-  rclcpp::WallRate controller_rate(1 / servo_params_.publish_period);
+  rclcpp::WallRate controller_rate(1.0 / servo_params_.publish_period);
   controller_period_ = controller_rate.period().count();
   controllers_ = createControllers(servo_params_);
   RCLCPP_INFO_STREAM(LOGGER, "PID controllers created.");
@@ -85,13 +87,14 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const JointJog& command)
 Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Twist& command)
 {
   Eigen::VectorXd joint_position_delta(num_joints_);
+  joint_position_delta.setZero();
   Eigen::VectorXd cartesian_position_delta;
 
   std::string command_frame = command.frame_id;
   const std::string planning_frame = servo_params_.planning_frame;
 
-  bool has_transform = transformExists(robot_state_, command_frame);
-  bool valid_command = isValidCommand(command.velocities);
+  const bool has_transform = transformExists(robot_state_, command_frame);
+  const bool valid_command = isValidCommand(command.velocities);
   if (has_transform && valid_command)
   {
     Twist transformed_twist = command;
@@ -161,50 +164,32 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Twist& command)
 Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Pose& command)
 {
   Eigen::VectorXd joint_position_delta(num_joints_);
-
+  joint_position_delta.setZero();
   // TODO: validate command
   const std::string& command_frame = command.frame_id;
   const std::string& planning_frame = servo_params_.planning_frame;
   const bool has_transform = transformExists(robot_state_, command_frame);
 
-  Eigen::Isometry3d transformed_pose;
   if (has_transform)
   {
-    Eigen::Isometry3d ee_pose = getEndEffectorPose();
-    // Convert commanded pose to planning frame.
-    if (command_frame != planning_frame)
-    {
-      // We solve (planning_frame -> base -> command_frame)
-      // by computing (base->planning_frame)^-1 * (base->command_frame)
-      const Eigen::Isometry3d command_to_planning_tf = robot_state_->getGlobalLinkTransform(command_frame).inverse() *
-                                                       robot_state_->getGlobalLinkTransform(planning_frame);
-
-      transformed_pose = command.pose * command_to_planning_tf;
-    }
+    // TODO: Convert frame as necessary, currently poses are assumed to be in planning frame.
 
     // Compute twist
-    Twist target_twist;
-    target_twist.frame_id = planning_frame;
-    const Eigen::Isometry3d pose_delta = ee_pose.inverse() * transformed_pose;
-    target_twist.velocities[0] = controllers_["x"].computeCommand(pose_delta.translation().x(), controller_period_);
-    target_twist.velocities[1] = controllers_["y"].computeCommand(pose_delta.translation().y(), controller_period_);
-    target_twist.velocities[2] = controllers_["z"].computeCommand(pose_delta.translation().z(), controller_period_);
-    target_twist.velocities[0] = 0.0;
-    target_twist.velocities[0] = 0.0;
-    target_twist.velocities[0] = 0.0;
+    const Eigen::Vector3d linear_delta = command.pose.translation() - getEndEffectorPose().translation();
+    Twist twist;
+    twist.frame_id = planning_frame;
+    twist.velocities.setZero();
+    twist.velocities[0] = controllers_["x"].computeCommand(linear_delta.x(), controller_period_);
+    twist.velocities[1] = controllers_["y"].computeCommand(linear_delta.y(), controller_period_);
+    twist.velocities[2] = controllers_["z"].computeCommand(linear_delta.z(), controller_period_);
 
-    joint_position_delta = jointDeltaFromCommand(target_twist);
+    joint_position_delta = jointDeltaFromCommand(twist);
   }
   else
   {
     servo_status_ = StatusCode::INVALID;
     if (!has_transform)
       RCLCPP_WARN_STREAM(LOGGER, "No transform available for command frame: " << command_frame);
-  }
-
-  for (auto& controller : controllers_)
-  {
-    controller.second.reset();
   }
   return joint_position_delta;
 }
@@ -281,8 +266,9 @@ const std::string CommandProcessor::getStatusMessage()
 
 const Eigen::Isometry3d CommandProcessor::getEndEffectorPose()
 {
-  return robot_state_->getGlobalLinkTransform(servo_params_.ee_frame_name).inverse() *
-         robot_state_->getGlobalLinkTransform(servo_params_.planning_frame);
+  // Robot base (panda_link0) to end-effector frame (panda_link8)
+  robot_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
+  return robot_state_->getGlobalLinkTransform(servo_params_.ee_frame_name);
 }
 
 }  // namespace moveit_servo

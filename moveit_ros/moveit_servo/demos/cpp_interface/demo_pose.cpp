@@ -79,16 +79,25 @@ int main(int argc, char* argv[])
   servo.incomingCommandType(CommandType::POSE);
 
   RCLCPP_INFO_STREAM(LOGGER, servo.getStatusMessage());
-  Eigen::Vector3d delta{0.0, 0.0, 0.0001};
+
+  // Get current pose of end-effector, this is in planning frame.
+  Eigen::Isometry3d curr_pose = servo.getEndEffectorPose();
+
+  Eigen::Isometry3d target_pose = curr_pose;
+  target_pose.translation().x() += 0.1;
+  target_pose.translation().y() += 0.1;
+
+  Pose p1{ servo_params.planning_frame, target_pose };
+
   while (rclcpp::ok() && servo.getStatus() == StatusCode::NO_WARNING)
   {
-    // Move only the 7th joint
-    Eigen::Isometry3d curr_pose = servo.getEndEffectorPose();
-    auto new_pose = curr_pose;
-    new_pose.translate(delta);
-    moveit_servo::Pose target_pose{servo_params.ee_frame_name, new_pose};
-
-    auto joint_state = servo.getNextJointState(target_pose);
+    curr_pose = servo.getEndEffectorPose();
+    if (curr_pose.isApprox(target_pose, 0.001))
+    {
+      RCLCPP_INFO_STREAM(LOGGER, "REACHED TARGET POSE");
+      break;
+    }
+    auto joint_state = servo.getNextJointState(p1);
 
     // Send the command to robot controller only if the command was valid.
     if (servo.getStatus() != StatusCode::INVALID)

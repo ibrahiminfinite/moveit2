@@ -240,7 +240,9 @@ double velocityScalingFactor(const Eigen::VectorXd& velocities, const moveit::co
       }
     }
     // Find the lowest scaling factor, this helps preserve cartesian motion.
-    scaling_override = *std::min_element(velocity_scaling_factors.begin(), velocity_scaling_factors.end());
+    scaling_override = velocity_scaling_factors.empty() ?
+                           scaling_override :
+                           *std::min_element(velocity_scaling_factors.begin(), velocity_scaling_factors.end());
   }
 
   return scaling_override;

@@ -108,6 +108,8 @@ public:
    */
   const Eigen::Isometry3d getEndEffectorPose();
 
+  StatusCode moveToPose(const Pose& target_pose);
+
 private:
   /**
    * \brief Validate the servo parameters
