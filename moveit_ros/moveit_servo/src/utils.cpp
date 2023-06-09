@@ -282,29 +282,6 @@ std::vector<int> jointsToHalt(const Eigen::VectorXd& positions, const Eigen::Vec
   return joint_idxs_to_halt;
 }
 
-std::map<std::string, control_toolbox::Pid> createControllers(const servo::Params& servo_params)
-{
-  std::map<std::string, control_toolbox::Pid> controllers;
-
-  // Get the parameters
-  auto x_pid = servo_params.pose_tracking.x_pid;
-  auto y_pid = servo_params.pose_tracking.y_pid;
-  auto z_pid = servo_params.pose_tracking.z_pid;
-  auto q_pid = servo_params.pose_tracking.q_pid;
-  double windup_limit = servo_params.pose_tracking.windup_limit;
-  bool use_anti_windup = servo_params.pose_tracking.use_anti_windup;
-
-  // Create the controllers
-  controllers["x"] = control_toolbox::Pid(x_pid.kp, x_pid.ki, x_pid.kd, windup_limit, -windup_limit, use_anti_windup);
-  controllers["y"] = control_toolbox::Pid(y_pid.kp, y_pid.ki, y_pid.kd, windup_limit, -windup_limit, use_anti_windup);
-  controllers["z"] = control_toolbox::Pid(z_pid.kp, z_pid.ki, z_pid.kd, windup_limit, -windup_limit, use_anti_windup);
-  controllers["qx"] = control_toolbox::Pid(q_pid.kp, q_pid.ki, q_pid.kd, windup_limit, -windup_limit, use_anti_windup);
-  controllers["qy"] = control_toolbox::Pid(q_pid.kp, q_pid.ki, q_pid.kd, windup_limit, -windup_limit, use_anti_windup);
-  controllers["qz"] = control_toolbox::Pid(q_pid.kp, q_pid.ki, q_pid.kd, windup_limit, -windup_limit, use_anti_windup);
-
-  return controllers;
-}
-
 /** \brief Helper function for converting Eigen::Isometry3d to geometry_msgs/TransformStamped **/
 geometry_msgs::msg::TransformStamped convertIsometryToTransform(const Eigen::Isometry3d& eigen_tf,
                                                                 const std::string& parent_frame,

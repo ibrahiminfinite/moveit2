@@ -58,13 +58,6 @@ CommandProcessor::CommandProcessor(const planning_scene_monitor::PlanningSceneMo
   , servo_status_{ servo_status }
 {
   num_joints_ = joint_model_group_->getActiveJointModelNames().size();
-
-  // Create PID controllers for pose tracking
-  rclcpp::WallRate controller_rate(1.0 / servo_params_.publish_period);
-  controller_period_ = controller_rate.period().count();
-  controllers_ = createControllers(servo_params_);
-  RCLCPP_INFO_STREAM(LOGGER, "PID controllers created.");
-
   setIKSolver();
 }
 
@@ -134,7 +127,7 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Twist& command)
   {
     servo_status_ = StatusCode::INVALID;
     if (!valid_command)
-      RCLCPP_WARN_STREAM(LOGGER, "Invalid twist command values.");
+      RCLCPP_WARN_STREAM(LOGGER, "Invalid twist command.");
     if (!has_transform)
       RCLCPP_WARN_STREAM(LOGGER, "No transform available for command frame " << command.frame_id);
   }
@@ -147,34 +140,43 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Pose& command)
   joint_position_delta.setZero();
 
   const bool has_transform = transformExists(robot_state_, command.frame_id);
-  const bool is_valid = isValidCommand(command.pose);
-  if (has_transform && is_valid)
+  const bool valid_command = isValidCommand(command.pose);
+  if (has_transform && valid_command)
   {
-    Twist twist;
-    twist.frame_id = servo_params_.planning_frame;
-    twist.velocities.setZero();
+    Eigen::Vector<double, 6> cartesian_delta;
 
-    // Compute linear and angular error.
+    // Compute linear and angular change needed.
     const Eigen::Isometry3d ee_pose{ getEndEffectorPose() };
-    const Eigen::Vector3d linear_delta = command.pose.translation() - ee_pose.translation();
+    cartesian_delta.head<3>() = command.pose.translation() - ee_pose.translation();
+
     Eigen::Quaterniond q_current(ee_pose.rotation()), q_target(command.pose.rotation());
     Eigen::Quaterniond q_error = q_target * q_current.inverse();
     Eigen::AngleAxisd angle_axis_error(q_error);
-    Eigen::Vector3d angular_delta = angle_axis_error.axis() * angle_axis_error.angle();
+    cartesian_delta.tail<3>() = angle_axis_error.axis() * angle_axis_error.angle();
 
-    // Compute the required twists.
-    twist.velocities[0] = controllers_["x"].computeCommand(linear_delta.x(), controller_period_);
-    twist.velocities[1] = controllers_["y"].computeCommand(linear_delta.y(), controller_period_);
-    twist.velocities[2] = controllers_["z"].computeCommand(linear_delta.z(), controller_period_);
-    twist.velocities[3] = controllers_["qx"].computeCommand(angular_delta.x(), controller_period_);
-    twist.velocities[4] = controllers_["qy"].computeCommand(angular_delta.y(), controller_period_);
-    twist.velocities[5] = controllers_["qz"].computeCommand(angular_delta.z(), controller_period_);
+    // Compute the required change in joint angles.
+    if (ik_solver_)
+    {
+      // Use robot's IK solver to get joint position delta.
+      joint_position_delta = deltaFromIkSolver(cartesian_delta);
+    }
+    else
+    {
+      // Robot does not have an IK solver, use inverse Jacobian to compute IK.
+      Eigen::MatrixXd jacobian = robot_state_->getJacobian(joint_model_group_);
+      Eigen::JacobiSVD<Eigen::MatrixXd> svd =
+          Eigen::JacobiSVD<Eigen::MatrixXd>(jacobian, Eigen::ComputeThinU | Eigen::ComputeThinV);
+      Eigen::MatrixXd matrix_s = svd.singularValues().asDiagonal();
+      Eigen::MatrixXd pseudo_inverse = svd.matrixV() * matrix_s.inverse() * svd.matrixU().transpose();
 
-    joint_position_delta = jointDeltaFromCommand(twist);
+      joint_position_delta = pseudo_inverse * cartesian_delta;
+    }
   }
   else
   {
     servo_status_ = StatusCode::INVALID;
+    if (!valid_command)
+      RCLCPP_WARN_STREAM(LOGGER, "Invalid pose command.");
     if (!has_transform)
       RCLCPP_WARN_STREAM(LOGGER, "No transform available for command frame: " << command.frame_id);
   }
@@ -256,15 +258,6 @@ const Eigen::Isometry3d CommandProcessor::getEndEffectorPose()
   // Robot base (panda_link0) to end-effector frame (panda_link8)
   robot_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   return robot_state_->getGlobalLinkTransform(servo_params_.ee_frame_name);
-}
-
-void CommandProcessor::resetControllers()
-{
-  for (auto& controller : controllers_)
-  {
-    controller.second.reset();
-  }
-  RCLCPP_INFO_STREAM(LOGGER, "PID controllers have been reset");
 }
 
 }  // namespace moveit_servo

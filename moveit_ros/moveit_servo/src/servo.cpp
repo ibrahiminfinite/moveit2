@@ -402,11 +402,6 @@ const Eigen::Isometry3d Servo::getEndEffectorPose()
   return command_processor_->getEndEffectorPose();
 }
 
-void Servo::resetPoseControllers()
-{
-  command_processor_->resetControllers();
-}
-
 Pose Servo::toPlanningFrame(const Pose& command)
 {
   if (command.frame_id != servo_params_.planning_frame)

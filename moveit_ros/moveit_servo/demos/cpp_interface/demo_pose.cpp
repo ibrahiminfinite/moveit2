@@ -75,9 +75,6 @@ int main(int argc, char* argv[])
   // This is just for convenience, should not be used for sync in real application.
   std::this_thread::sleep_for(std::chrono::seconds(3));
 
-  // Frquency at which the commands will be send to robot controller.
-  rclcpp::WallRate rate(1.0 / servo_params.publish_period);
-
   // Set the command type for servo.
   servo.incomingCommandType(CommandType::POSE);
 
@@ -103,6 +100,8 @@ int main(int argc, char* argv[])
 
   // Set tolerances for the target.
   const double linear_tolerance{ 0.001 }, angular_tolerance{ 0.01 };
+  // Frquency at which the commands will be send to robot controller.
+  rclcpp::WallRate command_rate(50);
 
   auto move_to_pose = [&](const auto& target_pose) {
     bool reached = false;
@@ -127,9 +126,8 @@ int main(int argc, char* argv[])
           trajectory_outgoing_cmd_pub->publish(joint_trajectory);
         }
       }
-      rate.sleep();
+      command_rate.sleep();
     }
-    servo.resetPoseControllers();
     return reached;
   };
 

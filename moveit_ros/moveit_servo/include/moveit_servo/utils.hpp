@@ -132,13 +132,6 @@ std::vector<int> jointsToHalt(const Eigen::VectorXd& positions, const Eigen::Vec
                               const moveit::core::JointBoundsVector& joint_bounds, double margin);
 
 /**
- * \brief Creates the PID controllers used for pose tracking based on config provided in servo parameters.
- * The parameters can be updated dynamically.
- * @param servo_params The servo parameters, used to get pid information.
- */
-std::map<std::string, control_toolbox::Pid> createControllers(const servo::Params& servo_params);
-
-/**
  * \brief Helper function for converting Eigen::Isometry3d to geometry_msgs/TransformStamped.
  * @param eigen_tf The isometry to be converted to TransformStamped.
  * @param parent_frame The target frame.

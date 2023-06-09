@@ -114,11 +114,6 @@ public:
   const Eigen::Isometry3d getEndEffectorPose();
 
   /**
-   * \brief Resets the PID controllers used for pose tracking.
-   */
-  void resetPoseControllers();
-
-  /**
    * \brief Converts the given pose to planning frame.
    * @param command The pose to be converted to planning frame.
    */

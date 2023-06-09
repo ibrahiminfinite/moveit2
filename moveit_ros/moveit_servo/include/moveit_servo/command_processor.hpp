@@ -41,8 +41,6 @@
 
 #pragma once
 
-#include <control_toolbox/pid.hpp>
-
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
@@ -89,11 +87,6 @@ public:
    */
   const Eigen::Isometry3d getEndEffectorPose();
 
-  /**
-   * \brief Resets the PID controllers used for pose tracking.
-   */
-  void resetControllers();
-
 private:
   /**
    * \brief Set the IK solver that servo will use. If the robot does not have one, inverse jacobian will be used instead.
@@ -128,9 +121,6 @@ private:
   StatusCode& servo_status_;
 
   kinematics::KinematicsBaseConstPtr ik_solver_ = nullptr;
-
-  uint64_t controller_period_;
-  std::map<std::string, control_toolbox::Pid> controllers_;
 };
 
 }  // namespace moveit_servo
