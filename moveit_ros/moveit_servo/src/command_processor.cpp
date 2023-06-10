@@ -139,14 +139,23 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Pose& command)
   Eigen::VectorXd joint_position_delta(num_joints_);
   joint_position_delta.setZero();
 
-  const bool has_transform = transformExists(robot_state_, command.frame_id);
+  const Eigen::Isometry3d ee_pose{ getEndEffectorPose() };
   const bool valid_command = isValidCommand(command.pose);
-  if (has_transform && valid_command)
+  const bool satisfies_angular_tolerance =
+      ee_pose.rotation().isApprox(command.pose.rotation(), servo_params_.pose_tracking.linear_tolerance);
+  const bool satisfies_linear_tolerance =
+      ee_pose.translation().isApprox(command.pose.translation(), servo_params_.pose_tracking.angular_tolerance);
+  const bool reached = satisfies_angular_tolerance && satisfies_linear_tolerance;
+
+  if (reached)
+  {
+    servo_status_ = StatusCode::POSE_ACHIEVED;
+  }
+  else if (valid_command && !reached)
   {
     Eigen::Vector<double, 6> cartesian_delta;
 
     // Compute linear and angular change needed.
-    const Eigen::Isometry3d ee_pose{ getEndEffectorPose() };
     cartesian_delta.head<3>() = command.pose.translation() - ee_pose.translation();
 
     Eigen::Quaterniond q_current(ee_pose.rotation()), q_target(command.pose.rotation());
@@ -177,8 +186,6 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Pose& command)
     servo_status_ = StatusCode::INVALID;
     if (!valid_command)
       RCLCPP_WARN_STREAM(LOGGER, "Invalid pose command.");
-    if (!has_transform)
-      RCLCPP_WARN_STREAM(LOGGER, "No transform available for command frame: " << command.frame_id);
   }
   return joint_position_delta;
 }

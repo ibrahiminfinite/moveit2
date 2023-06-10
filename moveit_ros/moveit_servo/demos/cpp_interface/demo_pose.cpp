@@ -98,49 +98,20 @@ int main(int argc, char* argv[])
   // Set angle to 45 degree from current angle about z, in planning frame.
   target_pose_planning_frame.pose.rotate(Eigen::AngleAxisd(0, Eigen::Vector3d::UnitZ()));
 
-  // Set tolerances for the target.
-  const double linear_tolerance{ 0.001 }, angular_tolerance{ 0.01 };
-  // Frquency at which the commands will be send to robot controller.
-  rclcpp::WallRate command_rate(50);
-
-  auto move_to_pose = [&](const auto& target_pose) {
-    bool reached = false;
-    while (rclcpp::ok() && servo.getStatus() == StatusCode::NO_WARNING)
-    {
-      const bool satisfies_angular_tolerance =
-          servo.getEndEffectorPose().rotation().isApprox(target_pose.pose.rotation(), angular_tolerance);
-      const bool satisfies_linear_tolerance =
-          servo.getEndEffectorPose().translation().isApprox(target_pose.pose.translation(), linear_tolerance);
-      reached = satisfies_angular_tolerance && satisfies_linear_tolerance;
-      if (reached)
-      {
-        break;
-      }
-      else
-      {
-        auto joint_state = servo.getNextJointState(target_pose);
-        // Send the command to robot controller only if the command was valid.
-        if (servo.getStatus() != StatusCode::INVALID)
-        {
-          auto joint_trajectory = composeTrajectoryMessage(servo_params, joint_state);
-          trajectory_outgoing_cmd_pub->publish(joint_trajectory);
-        }
-      }
-      command_rate.sleep();
-    }
-    return reached;
-  };
+  // The tracking tolerances are set using the parameters
+  // 1. pose_tracking.linear_tolerance (default 0.001 m)
+  // 2. pose_tracking.angular_tolerance (default 0.01 rad)
 
   // Move down and then up.
   RCLCPP_INFO_STREAM(LOGGER, servo.getStatusMessage());
-  if (move_to_pose(target_pose_ee_frame))
+  if (servo.moveToPose(target_pose_ee_frame, trajectory_outgoing_cmd_pub))
   {
     RCLCPP_INFO_STREAM(LOGGER, "End-Effector frame target Pose achieved");
   }
-  if (move_to_pose(target_pose_planning_frame))
+  if (servo.moveToPose(target_pose_planning_frame, trajectory_outgoing_cmd_pub))
   {
     RCLCPP_INFO_STREAM(LOGGER, "Planning frame target pose achieved");
   }
-  RCLCPP_INFO_STREAM(LOGGER, servo.getStatusMessage());
+
   rclcpp::shutdown();
 }

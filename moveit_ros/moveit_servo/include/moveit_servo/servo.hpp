@@ -131,6 +131,9 @@ public:
    */
   void setCollisionChecking(const bool check_collision);
 
+  bool moveToPose(const Pose& target_pose,
+                  const rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr& trajectory_publisher);
+
 private:
   /**
    * \brief Validate the servo parameters

@@ -240,7 +240,7 @@ servo:
     description: "[Hz] Collision-checking can easily bog down a CPU if done too often. \
                   Collision checking begins slowing down when nearer than a specified distance.",
     validation: {
-      gt_eq<>: 10.0
+      gt_eq<>: 0.0
     }
   }
 
@@ -261,3 +261,25 @@ servo:
       gt<>: 0.0
     }
   }
+
+
+########################### POSE TRACKING #######################################
+
+  pose_tracking:
+    linear_tolerance: {
+        type: double,
+        default_value: 0.001,
+        description: "The allowable linear error when tracking a pose.",
+        validation: {
+          gt<>: 0.0
+        }
+    }
+
+    angular_tolerance: {
+        type: double,
+        default_value: 0.01,
+        description: "The allowable angular error when tracking a pose.",
+        validation: {
+          gt<>: 0.0
+        }
+    }

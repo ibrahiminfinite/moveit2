@@ -445,4 +445,39 @@ void Servo::setCollisionChecking(const bool check_collision)
   check_collision ? collision_monitor_->start() : collision_monitor_->stop();
 }
 
+bool Servo::moveToPose(const Pose& target_pose,
+                       const rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr& trajectory_publisher)
+{
+  // Frquency at which the commands will be send to robot controller.
+  rclcpp::WallRate command_rate(50);
+
+  bool reached = false;
+  // Set a time out.
+  auto timeout = std::chrono::seconds(2);
+  std::chrono::seconds tracking_time(0);
+
+  auto start = std::chrono::high_resolution_clock::now();
+  while (rclcpp::ok())
+  {
+    auto joint_state = getNextJointState(target_pose);
+    reached = (getStatus() == StatusCode::POSE_ACHIEVED);
+
+    // Send the command to robot controller only if the command was valid.
+    if (reached || tracking_time > timeout)
+    {
+      break;
+    }
+    else if (getStatus() != StatusCode::INVALID)
+    {
+      auto joint_trajectory = composeTrajectoryMessage(servo_params_, joint_state);
+      trajectory_publisher->publish(joint_trajectory);
+    }
+    command_rate.sleep();
+
+    auto end = std::chrono::high_resolution_clock::now();
+    tracking_time = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+  }
+  return reached;
+}
+
 }  // namespace moveit_servo
