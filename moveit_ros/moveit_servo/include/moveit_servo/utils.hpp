@@ -56,14 +56,6 @@ namespace moveit_servo
 {
 
 /**
- * \brief Checks if a transform exists to the given frame.
- * @param current_state The current robot state.
- * @param frame_name The name of the frame for which we want to know if transform exists.
- * @return True if transform exists, else false
- */
-bool transformExists(const moveit::core::RobotStatePtr& current_state, const std::string& frame_name);
-
-/**
  * \brief Checks if a given command is valid.
  * @param command The command to be checked.
  * @return True if the command is valid, else False.
@@ -76,6 +68,20 @@ bool isValidCommand(const Eigen::VectorXd& command);
  * @return True if the command is valid, else False.
  */
 bool isValidCommand(const Eigen::Isometry3d& command);
+
+/**
+ * \brief Checks if a given Twist command is valid.
+ * @param command The command to be checked.
+ * @return True if the command is valid, else False.
+ */
+bool isValidCommand(const Twist& command);
+
+/**
+ * \brief Checks if a given Pose command is valid.
+ * @param command The command to be checked.
+ * @return True if the command is valid, else False.
+ */
+bool isValidCommand(const Pose& command);
 
 /**
  * \brief Create a pose message for the provided change in Cartesian position.

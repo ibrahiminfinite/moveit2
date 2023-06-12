@@ -86,7 +86,7 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Twist& command)
   joint_position_delta.setZero();
   Eigen::VectorXd cartesian_position_delta;
 
-  const bool valid_command = isValidCommand(command.velocities);
+  const bool valid_command = isValidCommand(command);
   if (valid_command)
   {
     // Compute the Cartesian position delta based on incoming command, assumed to be in m/s
@@ -127,7 +127,7 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Pose& command)
       ee_pose.translation().isApprox(command.pose.translation(), servo_params_.pose_tracking.angular_tolerance);
   const bool reached = satisfies_angular_tolerance && satisfies_linear_tolerance;
 
-  const bool valid_command = isValidCommand(command.pose);
+  const bool valid_command = isValidCommand(command);
   if (reached)
   {
     servo_status_ = StatusCode::POSE_ACHIEVED;

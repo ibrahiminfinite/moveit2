@@ -38,6 +38,7 @@
  */
 
 #include <moveit_servo/utils.hpp>
+#include <moveit_servo/datatypes.hpp>
 
 namespace
 {
@@ -47,16 +48,6 @@ const double SCALING_OVERRIDE_THRESHOLD = 0.01;
 
 namespace moveit_servo
 {
-
-bool transformExists(const moveit::core::RobotStatePtr& current_state, const std::string& frame_name)
-{
-  bool has_transform = false;
-  if (current_state->knowsFrameTransform(frame_name))
-  {
-    has_transform = true;
-  }
-  return has_transform;
-}
 
 bool isValidCommand(const Eigen::VectorXd& command)
 {
@@ -84,6 +75,16 @@ bool isValidCommand(const Eigen::Isometry3d& command)
   const Eigen::Vector3d translation = command.translation();
   const bool not_nan = (!std::isnan(translation.x()) && !std::isnan(translation.y()) && !std::isnan(translation.z()));
   return is_valid && not_nan;
+}
+
+bool isValidCommand(const Twist& command)
+{
+  return !command.frame_id.empty() && isValidCommand(command.velocities);
+}
+
+bool isValidCommand(const Pose& command)
+{
+  return !command.frame_id.empty() && isValidCommand(command.pose);
 }
 
 geometry_msgs::msg::Pose poseFromCartesianDelta(const Eigen::VectorXd& delta_x,

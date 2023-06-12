@@ -92,12 +92,12 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   setSmoothingPlugin();
 
   // Check if the tansforms to planning frame and end-effector frame exists.
-  if (!transformExists(robot_state_, servo_params_.planning_frame))
+  if (!robot_state_->knowsFrameTransform(servo_params_.planning_frame))
   {
     servo_status_ = StatusCode::INVALID;
     RCLCPP_ERROR_STREAM(LOGGER, "No transform available for planning frame " << servo_params_.planning_frame);
   }
-  else if (!transformExists(robot_state_, servo_params_.ee_frame_name))
+  else if (!robot_state_->knowsFrameTransform(servo_params_.ee_frame_name))
   {
     servo_status_ = StatusCode::INVALID;
     RCLCPP_ERROR_STREAM(LOGGER, "No transform available for end-effector frame " << servo_params_.ee_frame_name);
@@ -422,24 +422,31 @@ Pose Servo::toPlanningFrame(const Pose& command)
 
 Twist Servo::toPlanningFrame(const Twist& command)
 {
+  Twist transformed_twist = command;
+
   if (command.frame_id != servo_params_.planning_frame)
   {
-    Twist transformed_twist = command;
-    auto command_to_planning_frame =
-        transform_buffer_.lookupTransform(servo_params_.planning_frame, command.frame_id, rclcpp::Time(0));
+    const bool can_transform =
+        transform_buffer_.canTransform(servo_params_.planning_frame, command.frame_id, rclcpp::Time(0));
+    if (can_transform)
+    {
+      geometry_msgs::msg::TransformStamped command_to_planning_frame =
+          transform_buffer_.lookupTransform(servo_params_.planning_frame, command.frame_id, rclcpp::Time(0));
+      const Eigen::Isometry3d planning_frame_transfrom = tf2::transformToEigen(command_to_planning_frame);
 
-    const Eigen::Isometry3d planning_frame_transfrom = tf2::transformToEigen(command_to_planning_frame);
-    // Apply the transformation to the command vector
-    transformed_twist.frame_id = servo_params_.planning_frame;
-    transformed_twist.velocities.head<3>() = planning_frame_transfrom.linear() * command.velocities.head<3>();
-    transformed_twist.velocities.tail<3>() = planning_frame_transfrom.linear() * command.velocities.tail<3>();
-
-    return transformed_twist;
+      // Apply the transformation to the command vector
+      transformed_twist.frame_id = servo_params_.planning_frame;
+      transformed_twist.velocities.head<3>() = planning_frame_transfrom.linear() * command.velocities.head<3>();
+      transformed_twist.velocities.tail<3>() = planning_frame_transfrom.linear() * command.velocities.tail<3>();
+    }
+    else
+    {
+      servo_status_ = StatusCode::INVALID;
+      RCLCPP_ERROR_STREAM(LOGGER,
+                          "Cannot transform from " << command.frame_id << " to " << servo_params_.planning_frame);
+    }
   }
-  else
-  {
-    return command;
-  }
+  return transformed_twist;
 }
 
 void Servo::setCollisionChecking(const bool check_collision)
