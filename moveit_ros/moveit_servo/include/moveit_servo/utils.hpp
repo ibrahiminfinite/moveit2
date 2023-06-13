@@ -45,6 +45,7 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 
+#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit/robot_model/joint_model_group.h>
 #include <moveit/robot_state/robot_state.h>
 
@@ -146,4 +147,9 @@ geometry_msgs::msg::TransformStamped convertIsometryToTransform(const Eigen::Iso
                                                                 const std::string& parent_frame,
                                                                 const std::string& child_frame);
 
+/**
+ * \brief Creates the planning scene monitor used by servo
+ */
+planning_scene_monitor::PlanningSceneMonitorPtr createPlanningSceneMonitor(const rclcpp::Node::SharedPtr& node,
+                                                                           const servo::Params& servo_params);
 }  // namespace moveit_servo

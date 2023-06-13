@@ -9,7 +9,6 @@ from launch_param_builder import ParameterBuilder
 
 
 def generate_test_description():
-    
     moveit_config = (
         MoveItConfigsBuilder("moveit_resources_panda")
         .robot_description(file_path="config/panda.urdf.xacro")
@@ -82,17 +81,20 @@ def generate_test_description():
 
     servo_gtest = launch_ros.actions.Node(
         executable=launch.substitutions.PathJoinSubstitution(
-            [launch.substitutions.LaunchConfiguration("test_binary_dir"), "moveit_servo_dependent_utils_test"]
+            [
+                launch.substitutions.LaunchConfiguration("test_binary_dir"),
+                "moveit_servo_dependent_utils_test",
+            ]
         ),
         parameters=[
             servo_params,
             low_pass_filter_coeff,
             moveit_config.robot_description,
             moveit_config.robot_description_semantic,
-            moveit_config.robot_description_kinematics],
+            moveit_config.robot_description_kinematics,
+        ],
         output="screen",
     )
-
 
     return launch.LaunchDescription(
         [
@@ -112,7 +114,7 @@ def generate_test_description():
         "test_container": test_container,
         "servo_gtest": servo_gtest,
         "ros2_control_node": ros2_control_node,
-    }    
+    }
 
 
 class TestGTestWaitForCompletion(unittest.TestCase):

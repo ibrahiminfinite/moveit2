@@ -49,9 +49,11 @@ const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.servo");
 namespace moveit_servo
 {
 
-Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::ParamListener>& servo_param_listener)
+Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::ParamListener> servo_param_listener,
+             const planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor)
   : node_(node)
   , servo_param_listener_{ servo_param_listener }
+  , planning_scene_monitor_{ planning_scene_monitor }
   , transform_buffer_(node_->get_clock())
   , transform_listener_(transform_buffer_)
 {
@@ -59,7 +61,15 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
 
   validateParams(servo_params_);
 
-  createPlanningSceneMonitor();
+  // Planning scene monitor is passed in.
+  if (servo_params_.is_primary_planning_scene_monitor)
+  {
+    planning_scene_monitor_->providePlanningSceneService();
+  }
+  else
+  {
+    planning_scene_monitor_->requestPlanningSceneState();
+  }
 
   // Create the collision checker and start collision checking.
   // Collision checking thread can be stopped using c++ API
@@ -254,31 +264,6 @@ KinematicState Servo::haltJoints(const std::vector<int>& joints_to_halt, const K
   }
 
   return bounded_state;
-}
-
-void Servo::createPlanningSceneMonitor()
-{
-  // Can set robot_description name from parameters
-  std::string robot_description_name = "robot_description";
-  node_->get_parameter_or("robot_description_name", robot_description_name, robot_description_name);
-  // Set up planning_scene_monitor
-  planning_scene_monitor_ = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(
-      node_, robot_description_name, "planning_scene_monitor");
-  planning_scene_monitor_->startStateMonitor(servo_params_.joint_topic);
-  planning_scene_monitor_->startSceneMonitor(servo_params_.monitored_planning_scene_topic);
-  planning_scene_monitor_->setPlanningScenePublishingFrequency(25);
-  planning_scene_monitor_->getStateMonitor()->enableCopyDynamics(true);
-  planning_scene_monitor_->startPublishingPlanningScene(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE,
-                                                        std::string(node_->get_fully_qualified_name()) +
-                                                            "/publish_planning_scene");
-  if (servo_params_.is_primary_planning_scene_monitor)
-  {
-    planning_scene_monitor_->providePlanningSceneService();
-  }
-  else
-  {
-    planning_scene_monitor_->requestPlanningSceneState();
-  }
 }
 
 void Servo::setSmoothingPlugin()

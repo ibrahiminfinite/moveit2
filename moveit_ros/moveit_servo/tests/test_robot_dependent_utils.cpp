@@ -8,21 +8,23 @@
 namespace
 {
 
-    TEST_F(ServoCppFixture, testGetEndEffectorFrame)
-    {
-
-        Eigen::Isometry3d ee_pose = servo_test_instance_->getEndEffectorPose();
-        EXPECT_TRUE(moveit_servo::isValidCommand(ee_pose));
-
-    }
-
+TEST_F(ServoCppFixture, testGetEndEffectorFrame)
+{
+  Eigen::Isometry3d ee_pose = servo_test_instance_->getEndEffectorPose();
+  EXPECT_TRUE(moveit_servo::isValidCommand(ee_pose));
 }
+
+TEST_F(ServoCppFixture, testSingularityScaling)
+{
+}
+
+}  // namespace
 
 int main(int argc, char** argv)
 {
-    rclcpp::init(argc, argv);
-    ::testing::InitGoogleTest(&argc, argv);
-    int result = RUN_ALL_TESTS();
-    rclcpp::shutdown();
-    return result;
+  rclcpp::init(argc, argv);
+  ::testing::InitGoogleTest(&argc, argv);
+  int result = RUN_ALL_TESTS();
+  rclcpp::shutdown();
+  return result;
 }
