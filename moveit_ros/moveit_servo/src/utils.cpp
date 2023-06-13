@@ -51,30 +51,21 @@ namespace moveit_servo
 
 bool isValidCommand(const Eigen::VectorXd& command)
 {
-  bool is_valid = true;
-  for (const double& val : command)
-  {
-    if (std::isnan(val))
-    {
-      is_valid = false;
-      break;
-    }
-  }
-  return is_valid;
+  // returns true only if there are no nan values.
+  return (command.array() == command.array()).all();
 }
 
 bool isValidCommand(const Eigen::Isometry3d& command)
 {
-  bool is_valid = true;
+  bool is_valid_rotation = true;
   Eigen::Matrix3d identity, rotation;
   identity.setIdentity();
   rotation = command.linear();
-
-  is_valid = identity.isApprox(rotation.inverse() * rotation);
+  // checks rotation, will fail if there is nan
+  is_valid_rotation = identity.isApprox(rotation.inverse() * rotation);
   // Command is not vald if there is Nan
-  const Eigen::Vector3d translation = command.translation();
-  const bool not_nan = (!std::isnan(translation.x()) && !std::isnan(translation.y()) && !std::isnan(translation.z()));
-  return is_valid && not_nan;
+  const bool not_nan = isValidCommand(command.translation());
+  return is_valid_rotation && not_nan;
 }
 
 bool isValidCommand(const Twist& command)
