@@ -178,6 +178,7 @@ KinematicState Servo::getNextJointState(const ServoInput& command)
     // Compute velocities based on smoothed joint positions
     target_joint_velocities = (target_joint_positions - current_joint_positions) / servo_params_.publish_period;
 
+    // TODO : print warning if scaling applied for joint limit.
     // Scale down the velocity based on joint velocity limit or user defined scaling if applicable.
     target_joint_velocities *=
         velocityScalingFactor(target_joint_velocities, joint_bounds_, servo_params_.override_velocity_scaling_factor);

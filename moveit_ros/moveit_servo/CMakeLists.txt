@@ -112,11 +112,9 @@ ament_export_dependencies(${THIS_PACKAGE_INCLUDE_DEPENDS})
 
 
 if(BUILD_TESTING)
+
     find_package(ament_cmake_gtest REQUIRED)
     find_package(ros_testing REQUIRED)
-
-    # ament_add_gtest(moveit_servo_independent_utils_test tests/test_independent_utils.cpp)
-    # target_link_libraries(moveit_servo_independent_utils_test moveit_servo_lib_cpp)
 
     ament_add_gtest_executable(moveit_servo_dependent_utils_test tests/test_robot_dependent_utils.cpp tests/servo_cpp_fixture.hpp)
     target_link_libraries(moveit_servo_dependent_utils_test moveit_servo_lib_cpp)
