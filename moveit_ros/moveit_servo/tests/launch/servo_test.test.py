@@ -83,7 +83,7 @@ def generate_test_description():
         executable=launch.substitutions.PathJoinSubstitution(
             [
                 launch.substitutions.LaunchConfiguration("test_binary_dir"),
-                "moveit_servo_dependent_utils_test",
+                "moveit_servo_utils_test",
             ]
         ),
         parameters=[

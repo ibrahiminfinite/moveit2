@@ -34,7 +34,7 @@
 
 /* Author    : V Mohammed Ibrahim
    Desc      : Tests for utilities that depend on the robot/ robot state.
-   Title     : test_robot_dependent_utils.cpp
+   Title     : test_utils.cpp
    Project   : moveit_servo
    Created   : 06/20/2023
 */
@@ -146,27 +146,27 @@ TEST_F(ServoCppFixture, testLeavingSingularity)
   Eigen::VectorXd cartesian_delta(6);
   cartesian_delta << 0.005, 0.0, 0.0, 0.0, 0.0, 0.0;
 
-  robot_state_->setVariablePosition("panda_joint1", 0.0);
-  robot_state_->setVariablePosition("panda_joint2", 0.334);
-  robot_state_->setVariablePosition("panda_joint3", 0.0);
-  robot_state_->setVariablePosition("panda_joint4", -1.177);
-  robot_state_->setVariablePosition("panda_joint5", 0.0);
-  robot_state_->setVariablePosition("panda_joint6", 1.510);
-  robot_state_->setVariablePosition("panda_joint7", 0.785);
-
+  // Home state
+  Eigen::VectorXd home_state(7);
+  home_state << 0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785;
+  robot_state_->setJointGroupActivePositions(joint_model_group_, home_state);
   auto scaling_result = moveit_servo::velocityScalingFactorForSingularity(joint_model_group_, robot_state_,
                                                                           cartesian_delta, servo_params_);
+  ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::NO_WARNING);
+
+  // Approach singularity
+  Eigen::VectorXd state_approaching_singularity(7);
+  state_approaching_singularity << 0.0, 0.334, 0.0, -1.177, 0.0, 1.510, 0.785;
+  robot_state_->setJointGroupActivePositions(joint_model_group_, state_approaching_singularity);
+  scaling_result = moveit_servo::velocityScalingFactorForSingularity(joint_model_group_, robot_state_, cartesian_delta,
+                                                                     servo_params_);
   ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::DECELERATE_FOR_APPROACHING_SINGULARITY);
 
+  // Move away from singularity
   cartesian_delta(0) *= -1;
-  robot_state_->setVariablePosition("panda_joint1", 0.0);
-  robot_state_->setVariablePosition("panda_joint2", 0.3458);
-  robot_state_->setVariablePosition("panda_joint3", 0.0);
-  robot_state_->setVariablePosition("panda_joint4", -1.1424);
-  robot_state_->setVariablePosition("panda_joint5", 0.0);
-  robot_state_->setVariablePosition("panda_joint6", 1.4865);
-  robot_state_->setVariablePosition("panda_joint7", 0.785);
-
+  Eigen::VectorXd state_leaving_singularity(7);
+  state_leaving_singularity << 0.0, 0.3458, 0.0, -1.1424, 0.0, 1.4865, 0.785;
+  robot_state_->setJointGroupActivePositions(joint_model_group_, state_leaving_singularity);
   scaling_result = moveit_servo::velocityScalingFactorForSingularity(joint_model_group_, robot_state_, cartesian_delta,
                                                                      servo_params_);
   ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::DECELERATE_FOR_LEAVING_SINGULARITY);
@@ -177,18 +177,18 @@ TEST_F(ServoCppFixture, testApproachingSingularity)
   Eigen::VectorXd cartesian_delta(6);
   cartesian_delta << 0.005, 0.0, 0.0, 0.0, 0.0, 0.0;
 
+  // Home state
+  Eigen::VectorXd home_state(7);
+  home_state << 0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785;
+  robot_state_->setJointGroupActivePositions(joint_model_group_, home_state);
   auto scaling_result = moveit_servo::velocityScalingFactorForSingularity(joint_model_group_, robot_state_,
                                                                           cartesian_delta, servo_params_);
   ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::NO_WARNING);
 
-  robot_state_->setVariablePosition("panda_joint1", 0.0);
-  robot_state_->setVariablePosition("panda_joint2", 0.334);
-  robot_state_->setVariablePosition("panda_joint3", 0.0);
-  robot_state_->setVariablePosition("panda_joint4", -1.177);
-  robot_state_->setVariablePosition("panda_joint5", 0.0);
-  robot_state_->setVariablePosition("panda_joint6", 1.510);
-  robot_state_->setVariablePosition("panda_joint7", 0.785);
-
+  // Approach singularity
+  Eigen::VectorXd state_approaching_singularity(7);
+  state_approaching_singularity << 0.0, 0.334, 0.0, -1.177, 0.0, 1.510, 0.785;
+  robot_state_->setJointGroupActivePositions(joint_model_group_, state_approaching_singularity);
   scaling_result = moveit_servo::velocityScalingFactorForSingularity(joint_model_group_, robot_state_, cartesian_delta,
                                                                      servo_params_);
   ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::DECELERATE_FOR_APPROACHING_SINGULARITY);
@@ -199,18 +199,18 @@ TEST_F(ServoCppFixture, testHaltForSingularity)
   Eigen::VectorXd cartesian_delta(6);
   cartesian_delta << 0.005, 0.0, 0.0, 0.0, 0.0, 0.0;
 
+  // Home state
+  Eigen::VectorXd home_state(7);
+  home_state << 0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785;
+  robot_state_->setJointGroupActivePositions(joint_model_group_, home_state);
   auto scaling_result = moveit_servo::velocityScalingFactorForSingularity(joint_model_group_, robot_state_,
                                                                           cartesian_delta, servo_params_);
   ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::NO_WARNING);
 
-  robot_state_->setVariablePosition("panda_joint1", -0.0001);
-  robot_state_->setVariablePosition("panda_joint2", 0.5690);
-  robot_state_->setVariablePosition("panda_joint3", 0.0005);
-  robot_state_->setVariablePosition("panda_joint4", -0.7782);
-  robot_state_->setVariablePosition("panda_joint5", 0.0);
-  robot_state_->setVariablePosition("panda_joint6", 1.3453);
-  robot_state_->setVariablePosition("panda_joint7", 0.7845);
-
+  // Move to singular state.
+  Eigen::VectorXd singular_state(7);
+  singular_state << -0.0001, 0.5690, 0.0005, -0.7782, 0.0, 1.3453, 0.7845;
+  robot_state_->setJointGroupActivePositions(joint_model_group_, singular_state);
   scaling_result = moveit_servo::velocityScalingFactorForSingularity(joint_model_group_, robot_state_, cartesian_delta,
                                                                      servo_params_);
   ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::HALT_FOR_SINGULARITY);
