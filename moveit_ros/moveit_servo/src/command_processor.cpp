@@ -87,7 +87,8 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Twist& command)
   Eigen::VectorXd cartesian_position_delta;
 
   const bool valid_command = isValidCommand(command);
-  if (valid_command)
+  const bool is_planning_frame = command.frame_id == servo_params_.planning_frame;
+  if (is_planning_frame && valid_command)
   {
     // Compute the Cartesian position delta based on incoming command, assumed to be in m/s
     cartesian_position_delta = command.velocities * servo_params_.publish_period;
@@ -111,6 +112,9 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Twist& command)
     servo_status_ = StatusCode::INVALID;
     if (!valid_command)
       RCLCPP_WARN_STREAM(LOGGER, "Invalid twist command.");
+    if (!is_planning_frame)
+      RCLCPP_WARN_STREAM(LOGGER,
+                         "Command frame is: " << command.frame_id << " expected: " << servo_params_.planning_frame);
   }
   return joint_position_delta;
 }
@@ -128,30 +132,38 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromCommand(const Pose& command)
   const bool reached = satisfies_angular_tolerance && satisfies_linear_tolerance;
 
   const bool valid_command = isValidCommand(command);
-  if (reached)
+  const bool is_planning_frame = command.frame_id == servo_params_.planning_frame;
+
+  if (is_planning_frame)
   {
-    servo_status_ = StatusCode::POSE_ACHIEVED;
-  }
-  else if (valid_command && !reached)
-  {
-    Eigen::Vector<double, 6> cartesian_position_delta;
+    if (reached)
+    {
+      servo_status_ = StatusCode::POSE_ACHIEVED;
+    }
+    else if (valid_command && !reached)
+    {
+      Eigen::Vector<double, 6> cartesian_position_delta;
 
-    // Compute linear and angular change needed.
-    cartesian_position_delta.head<3>() = command.pose.translation() - ee_pose.translation();
+      // Compute linear and angular change needed.
+      cartesian_position_delta.head<3>() = command.pose.translation() - ee_pose.translation();
 
-    Eigen::Quaterniond q_current(ee_pose.rotation()), q_target(command.pose.rotation());
-    Eigen::Quaterniond q_error = q_target * q_current.inverse();
-    Eigen::AngleAxisd angle_axis_error(q_error);
-    cartesian_position_delta.tail<3>() = angle_axis_error.axis() * angle_axis_error.angle();
+      Eigen::Quaterniond q_current(ee_pose.rotation()), q_target(command.pose.rotation());
+      Eigen::Quaterniond q_error = q_target * q_current.inverse();
+      Eigen::AngleAxisd angle_axis_error(q_error);
+      cartesian_position_delta.tail<3>() = angle_axis_error.axis() * angle_axis_error.angle();
 
-    // Compute the required change in joint angles.
-    joint_position_delta = jointDeltaFromIK(cartesian_position_delta);
+      // Compute the required change in joint angles.
+      joint_position_delta = jointDeltaFromIK(cartesian_position_delta);
+    }
   }
   else
   {
     servo_status_ = StatusCode::INVALID;
     if (!valid_command)
       RCLCPP_WARN_STREAM(LOGGER, "Invalid pose command.");
+    if (!is_planning_frame)
+      RCLCPP_WARN_STREAM(LOGGER,
+                         "Command frame is: " << command.frame_id << " expected: " << servo_params_.planning_frame);
   }
   return joint_position_delta;
 }

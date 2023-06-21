@@ -411,18 +411,20 @@ Twist Servo::toPlanningFrame(const Twist& command)
 
   if (command.frame_id != servo_params_.planning_frame)
   {
-    const bool can_transform =
-        transform_buffer_.canTransform(servo_params_.planning_frame, command.frame_id, rclcpp::Time(0));
+    const bool can_transform = robot_state_->knowsFrameTransform(servo_params_.planning_frame);
     if (can_transform)
     {
-      geometry_msgs::msg::TransformStamped command_to_planning_frame =
-          transform_buffer_.lookupTransform(servo_params_.planning_frame, command.frame_id, rclcpp::Time(0));
-      const Eigen::Isometry3d planning_frame_transfrom = tf2::transformToEigen(command_to_planning_frame);
-
+      // TODO : Find out why transform obtained from tf2 does not work properly.
+      // RobotState::GetGlobalLinkTransform does not work for all frames in the environment.
+      // The behaviour is same if robot_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState()
+      // is called before computing the transform.
+      const Eigen::Isometry3d planning_frame_transform =
+          robot_state_->getGlobalLinkTransform(servo_params_.planning_frame).inverse() *
+          robot_state_->getGlobalLinkTransform(command.frame_id);
       // Apply the transformation to the command vector
       transformed_twist.frame_id = servo_params_.planning_frame;
-      transformed_twist.velocities.head<3>() = planning_frame_transfrom.linear() * command.velocities.head<3>();
-      transformed_twist.velocities.tail<3>() = planning_frame_transfrom.linear() * command.velocities.tail<3>();
+      transformed_twist.velocities.head<3>() = planning_frame_transform.linear() * command.velocities.head<3>();
+      transformed_twist.velocities.tail<3>() = planning_frame_transform.linear() * command.velocities.tail<3>();
     }
     else
     {
