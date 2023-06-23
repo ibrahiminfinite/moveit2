@@ -143,8 +143,7 @@ TEST_F(ServoCppFixture, testLeavingSingularity)
   Eigen::Vector<double, 6> cartesian_delta{ 0.005, 0.0, 0.0, 0.0, 0.0, 0.0 };
 
   // Home state
-  Eigen::Vector<double, 7> home_state{ 0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785 };
-  robot_state_->setJointGroupActivePositions(joint_model_group_, home_state);
+  robot_state_->setToDefaultValues(joint_model_group_, "ready");
   auto scaling_result = moveit_servo::velocityScalingFactorForSingularity(joint_model_group_, robot_state_,
                                                                           cartesian_delta, servo_params_);
   ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::NO_WARNING);

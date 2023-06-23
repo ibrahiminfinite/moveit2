@@ -18,7 +18,7 @@ def generate_test_description():
     # Get parameters for the Servo node
     servo_params = {
         "moveit_servo_test": ParameterBuilder("moveit_servo")
-        .yaml("config/panda_simulated_config.yaml")
+        .yaml("config/panda_simulated_test_config.yaml")
         .to_dict()
     }
 
@@ -83,7 +83,7 @@ def generate_test_description():
         executable=launch.substitutions.PathJoinSubstitution(
             [
                 launch.substitutions.LaunchConfiguration("test_binary_dir"),
-                "moveit_servo_utils_test",
+                "moveit_servo_integration_test",
             ]
         ),
         parameters=[

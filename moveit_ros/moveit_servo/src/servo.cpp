@@ -172,8 +172,9 @@ KinematicState Servo::getNextJointState(const ServoInput& command)
 
     // TODO : apply filtering to the velocity instead of position
     // Apply smoothing to the positions
+    RCLCPP_INFO_STREAM(LOGGER, "BEFORE SMOOTHING "<<target_state.positions[6]);
     smoother_->doSmoothing(target_state.positions);
-
+    RCLCPP_INFO_STREAM(LOGGER, "AFTER SMOOTHING "<<target_state.positions[6]);
     // Compute velocities based on smoothed joint positions
     target_joint_velocities = (target_joint_positions - current_joint_positions) / servo_params_.publish_period;
 

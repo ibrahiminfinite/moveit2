@@ -89,10 +89,18 @@ int main(int argc, char* argv[])
   std::chrono::seconds time_elapsed(0);
   auto start_time = std::chrono::steady_clock::now();
 
+  Eigen::VectorXd current_positions(7);
+  auto robot_state = planning_scene_monitor->getStateMonitor()->getCurrentState();
+  auto joint_model_group = robot_state->getJointModelGroup(servo_params.move_group_name);
+  robot_state->copyJointGroupPositions(joint_model_group, current_positions);
+  RCLCPP_INFO_STREAM(LOGGER, std::endl << current_positions);
+
   RCLCPP_INFO_STREAM(LOGGER, servo.getStatusMessage());
   while (rclcpp::ok())
   {
     KinematicState joint_state = servo.getNextJointState(joint_jog);
+    Eigen::Map<Eigen::VectorXd> joint_pos(joint_state.positions.data(), joint_state.positions.size());
+    RCLCPP_INFO_STREAM(LOGGER, std::endl << "Computed " << joint_pos << std::endl);
     StatusCode status = servo.getStatus();
 
     auto current_time = std::chrono::steady_clock::now();
@@ -107,7 +115,14 @@ int main(int argc, char* argv[])
       trajectory_outgoing_cmd_pub->publish(composeTrajectoryMessage(servo_params, joint_state));
     }
     rate.sleep();
+    rate.sleep();
+    rate.sleep();
+    break;
   }
+
+  robot_state = planning_scene_monitor->getStateMonitor()->getCurrentState();
+  robot_state->copyJointGroupPositions(joint_model_group, current_positions);
+  RCLCPP_INFO_STREAM(LOGGER, std::endl << "FINAL" << std::endl << current_positions);
 
   RCLCPP_INFO(LOGGER, "Exiting demo.");
   rclcpp::shutdown();
