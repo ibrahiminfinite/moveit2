@@ -238,17 +238,18 @@ double velocityScalingFactor(const Eigen::VectorXd& velocities, const moveit::co
   // If override value is close to zero, user is not overriding the scaling
   if (scaling_override < SCALING_OVERRIDE_THRESHOLD)
   {
+    scaling_override = 1.0;  // Set to no scaling.
     double bounded_vel;
     std::vector<double> velocity_scaling_factors;  // The allowable fraction of computed veclocity
 
     for (size_t i = 0; i < joint_bounds.size(); i++)
     {
       const auto joint_bound = (*joint_bounds[i])[0];
-      if (joint_bound.velocity_bounded_ && velocities[i] != 0.0)
+      if (joint_bound.velocity_bounded_ && velocities(i) != 0.0)
       {
         // Find the ratio of clamped velocity to original velocity
-        bounded_vel = std::clamp(velocities[i], joint_bound.min_velocity_, joint_bound.max_velocity_);
-        velocity_scaling_factors.push_back(bounded_vel / velocities[i]);
+        bounded_vel = std::clamp(velocities(i), joint_bound.min_velocity_, joint_bound.max_velocity_);
+        velocity_scaling_factors.push_back(bounded_vel / velocities(i));
       }
     }
     // Find the lowest scaling factor, this helps preserve Cartesian motion.

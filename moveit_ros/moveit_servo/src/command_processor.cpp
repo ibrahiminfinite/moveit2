@@ -255,7 +255,7 @@ const std::string CommandProcessor::getStatusMessage()
 
 const Eigen::Isometry3d CommandProcessor::getEndEffectorPose()
 {
-  // Robot base (panda_link0) to end-effector frame (panda_link8)
+  // Robot base (panda_link0) to end effector frame (panda_link8)
   robot_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   return robot_state_->getGlobalLinkTransform(servo_params_.ee_frame_name);
 }

@@ -72,7 +72,6 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   }
 
   // Create the collision checker and start collision checking.
-  // Collision checking thread can be stopped using c++ API
   collision_monitor_ =
       std::make_unique<CollisionMonitor>(planning_scene_monitor_, servo_params_, collision_velocity_scale_);
   collision_monitor_->start();
@@ -101,7 +100,7 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   // Load the smoothing plugin
   setSmoothingPlugin();
 
-  // Check if the tansforms to planning frame and end-effector frame exists.
+  // Check if the transforms to planning frame and end effector frame exist.
   if (!robot_state_->knowsFrameTransform(servo_params_.planning_frame))
   {
     servo_status_ = StatusCode::INVALID;
@@ -110,7 +109,7 @@ Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::P
   else if (!robot_state_->knowsFrameTransform(servo_params_.ee_frame_name))
   {
     servo_status_ = StatusCode::INVALID;
-    RCLCPP_ERROR_STREAM(LOGGER, "No transform available for end-effector frame " << servo_params_.ee_frame_name);
+    RCLCPP_ERROR_STREAM(LOGGER, "No transform available for end effector frame " << servo_params_.ee_frame_name);
   }
   else
   {

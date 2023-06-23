@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
       }
       else if (status == StatusCode::POSE_ACHIEVED)
       {
-        RCLCPP_INFO_STREAM(LOGGER, "Target pose in end-effector frame achieved.");
+        RCLCPP_INFO_STREAM(LOGGER, "Target pose in end effector frame achieved.");
         break;
       }
       else if (status != StatusCode::INVALID)

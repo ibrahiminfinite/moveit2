@@ -78,7 +78,7 @@ int main(int argc, char* argv[])
 
   // Set the command type for servo.
   servo.expectedCommandType(CommandType::TWIST);
-  // Move end-effector in the +z direction at 10 cm/s
+  // Move end effector in the +z direction at 10 cm/s
   // while turning around z axis in the +ve direction at 0.5 rad/s
   Twist target_twist{ servo_params.ee_frame_name, { 0.0, 0.0, 0.1, 0.0, 0.0, 0.5 } };
   // Servo expects the command to be in planning frame, use the helper method to convert it.

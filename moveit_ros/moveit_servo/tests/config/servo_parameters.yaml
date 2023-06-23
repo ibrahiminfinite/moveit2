@@ -16,7 +16,7 @@ servo:
 
   ee_frame_name: {
     type: string,
-    description: "The name of end-effector frame of your robot \
+    description: "The name of end effector frame of your robot \
                   This parameter does not have a default value and \
                   must be passed to the node during launch time."
   }
