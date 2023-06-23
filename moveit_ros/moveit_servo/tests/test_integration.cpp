@@ -44,44 +44,44 @@
 
 namespace
 {
-    TEST_F(ServoCppFixture, testJointJog)
-    {
-        moveit_servo::JointJog joint_jog(7);
-        joint_jog << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0;
+TEST_F(ServoCppFixture, testJointJog)
+{
+  moveit_servo::JointJog joint_jog(7);
+  joint_jog << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0;
 
-        // 1.0 rad/s applied for 0.034 seconds (publish period) should change joint angle by 0.034 rad.
-        // But the actual result after smoothing will be 0.0136, when no other scaling is applied.
-        std::vector<double> initial_joint_positions(7);
-        robot_state_->copyJointGroupPositions(joint_model_group_, initial_joint_positions);
+  // 1.0 rad/s applied for 0.034 seconds (publish period) should change joint angle by 0.034 rad.
+  // But the actual result after smoothing will be 0.0136, when no other scaling is applied.
+  std::vector<double> initial_joint_positions(7);
+  robot_state_->copyJointGroupPositions(joint_model_group_, initial_joint_positions);
 
-        // Compute next state.
-        servo_test_instance_->expectedCommandType(moveit_servo::CommandType::JOINT_JOG);
-        moveit_servo::KinematicState next_state = servo_test_instance_->getNextJointState(joint_jog);
-        
-        double delta = next_state.positions[6] - initial_joint_positions[6];
-        constexpr double tol = 0.00001;
-        ASSERT_NEAR(delta, 0.0136, tol);
-    }
+  // Compute next state.
+  servo_test_instance_->expectedCommandType(moveit_servo::CommandType::JOINT_JOG);
+  moveit_servo::KinematicState next_state = servo_test_instance_->getNextJointState(joint_jog);
 
-    TEST_F(ServoCppFixture, testTwist)
-    {
-        moveit_servo::Twist twist{servo_params_.ee_frame_name, {0.0, 0.0, 0.0, 0.0, 0.0, 1.0}};
-        twist = servo_test_instance_->toPlanningFrame(twist);
-        
-        // 1.0 rad/s applied for 0.034 seconds (publish period) should change joint angle by 0.034 rad.
-        // But the actual result after smoothing will be 0.0136, when no other scaling is applied.
-        std::vector<double> initial_joint_positions(7);
-        robot_state_->copyJointGroupPositions(joint_model_group_, initial_joint_positions);
-
-        // Compute next state.
-        servo_test_instance_->expectedCommandType(moveit_servo::CommandType::TWIST);
-        moveit_servo::KinematicState next_state = servo_test_instance_->getNextJointState(twist);
-        
-        double delta = next_state.positions[6] - initial_joint_positions[6];
-        constexpr double tol = 0.00001;
-        ASSERT_NEAR(delta, 0.0136, tol);
-    }
+  double delta = next_state.positions[6] - initial_joint_positions[6];
+  constexpr double tol = 0.00001;
+  ASSERT_NEAR(delta, 0.0136, tol);
 }
+
+TEST_F(ServoCppFixture, testTwist)
+{
+  moveit_servo::Twist twist{ servo_params_.ee_frame_name, { 0.0, 0.0, 0.0, 0.0, 0.0, 0.1 } };
+  twist = servo_test_instance_->toPlanningFrame(twist);
+
+  // 1.0 rad/s applied for 0.034 seconds (publish period) should change joint angle by 0.034 rad.
+  // But the actual result after smoothing will be 0.0136, when no other scaling is applied.
+  std::vector<double> initial_joint_positions(7);
+  robot_state_->copyJointGroupPositions(joint_model_group_, initial_joint_positions);
+
+  // Compute next state.
+  servo_test_instance_->expectedCommandType(moveit_servo::CommandType::TWIST);
+  moveit_servo::KinematicState next_state = servo_test_instance_->getNextJointState(twist);
+
+  double delta = next_state.positions[6] - initial_joint_positions[6];
+  constexpr double tol = 0.000001;
+  ASSERT_NEAR(delta, 0.000561, tol);
+}
+}  // namespace
 
 int main(int argc, char** argv)
 {

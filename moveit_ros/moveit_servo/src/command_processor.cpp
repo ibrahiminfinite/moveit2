@@ -178,19 +178,22 @@ Eigen::VectorXd CommandProcessor::jointDeltaFromIK(const Eigen::VectorXd& cartes
 
     robot_state_->copyJointGroupPositions(joint_model_group_, current_joint_positions);
 
-    const Eigen::Isometry3d base_to_tip_frame_transform =
-        robot_state_->getGlobalLinkTransform(ik_solver_->getBaseFrame()).inverse() *
-        robot_state_->getGlobalLinkTransform(ik_solver_->getTipFrame());
-
-    geometry_msgs::msg::Pose next_pose = poseFromCartesianDelta(cartesian_position_delta, base_to_tip_frame_transform);
+    // Compute target end effector pose
+    Eigen::Isometry3d ee_pose = robot_state_->getGlobalLinkTransform(ik_solver_->getTipFrame());
+    // Transform translation to end effector frame and apply.
+    ee_pose.translate(ee_pose.rotation() * cartesian_position_delta.head<3>());
+    Eigen::Quaterniond target_rotation = Eigen::AngleAxisd(cartesian_position_delta[3], Eigen::Vector3d::UnitX()) *
+                                         Eigen::AngleAxisd(cartesian_position_delta[4], Eigen::Vector3d::UnitY()) *
+                                         Eigen::AngleAxisd(cartesian_position_delta[5], Eigen::Vector3d::UnitZ());
+    ee_pose.rotate(target_rotation);
 
     // setup for IK call
     std::vector<double> solution(num_joints_);
     moveit_msgs::msg::MoveItErrorCodes err;
     kinematics::KinematicsQueryOptions opts;
     opts.return_approximate_solution = true;
-    if (ik_solver_->searchPositionIK(next_pose, current_joint_positions, servo_params_.publish_period / 2.0, solution,
-                                     err, opts))
+    if (ik_solver_->searchPositionIK(tf2::toMsg(ee_pose), current_joint_positions, servo_params_.publish_period / 2.0,
+                                     solution, err, opts))
     {
       // find the difference in joint positions that will get us to the desired pose
       for (size_t i = 0; i < num_joints_; ++i)

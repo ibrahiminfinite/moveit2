@@ -172,9 +172,8 @@ KinematicState Servo::getNextJointState(const ServoInput& command)
 
     // TODO : apply filtering to the velocity instead of position
     // Apply smoothing to the positions
-    RCLCPP_INFO_STREAM(LOGGER, "BEFORE SMOOTHING "<<target_state.positions[6]);
     smoother_->doSmoothing(target_state.positions);
-    RCLCPP_INFO_STREAM(LOGGER, "AFTER SMOOTHING "<<target_state.positions[6]);
+
     // Compute velocities based on smoothed joint positions
     target_joint_velocities = (target_joint_positions - current_joint_positions) / servo_params_.publish_period;
 
@@ -415,17 +414,14 @@ Twist Servo::toPlanningFrame(const Twist& command)
     const bool can_transform = robot_state_->knowsFrameTransform(servo_params_.planning_frame);
     if (can_transform)
     {
-      // TODO : Find out why transform obtained from tf2 does not work properly.
-      // RobotState::GetGlobalLinkTransform does not work for all frames in the environment.
-      // The behaviour is same if robot_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState()
-      // is called before computing the transform.
-      const Eigen::Isometry3d planning_frame_transform =
-          robot_state_->getGlobalLinkTransform(servo_params_.planning_frame).inverse() *
-          robot_state_->getGlobalLinkTransform(command.frame_id);
-      // Apply the transformation to the command vector
+      auto command_to_planning_frame =
+          transform_buffer_.lookupTransform(servo_params_.planning_frame, command.frame_id, rclcpp::Time(0));
+
+      const Eigen::Isometry3d planning_frame_transform = tf2::transformToEigen(command_to_planning_frame);
+
       transformed_twist.frame_id = servo_params_.planning_frame;
-      transformed_twist.velocities.head<3>() = planning_frame_transform.linear() * command.velocities.head<3>();
-      transformed_twist.velocities.tail<3>() = planning_frame_transform.linear() * command.velocities.tail<3>();
+      // We only convert the linear velocities to planning frame, the angular velocities should be applied in the command frame itself.
+      transformed_twist.velocities.head<3>() = planning_frame_transform.rotation() * command.velocities.head<3>();
     }
     else
     {

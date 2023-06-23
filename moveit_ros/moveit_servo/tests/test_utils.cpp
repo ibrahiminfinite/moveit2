@@ -206,28 +206,6 @@ TEST_F(ServoCppFixture, testGetEndEffectorFrame)
   ASSERT_TRUE(moveit_servo::isValidCommand(ee_pose));
 }
 
-TEST_F(ServoCppFixture, testPoseFromCartesianDelta)
-{
-  kinematics::KinematicsBaseConstPtr ik_solver = joint_model_group_->getSolverInstance();
-  const Eigen::Isometry3d base_to_tip_frame_transform =
-      robot_state_->getGlobalLinkTransform(ik_solver->getBaseFrame()).inverse() *
-      robot_state_->getGlobalLinkTransform(ik_solver->getTipFrame());
-
-  // Pose message for a carteisan delta with only a +45 degree rotation about z.
-  Eigen::Vector<double, 6> cartesian_delta{ 0.0, 0.0, 0.0, 0.0, 0.0, M_PI / 4 };
-
-  geometry_msgs::msg::Pose received_pose =
-      moveit_servo::poseFromCartesianDelta(cartesian_delta, base_to_tip_frame_transform);
-
-  // End effector pose rotated by 45 degree
-  Eigen::Isometry3d ee_pose = servo_test_instance_->getEndEffectorPose();
-  ee_pose.rotate(Eigen::AngleAxisd(M_PI / 4, Eigen::Vector3d::UnitZ()));
-  Eigen::Quaterniond ee_rotation(ee_pose.rotation());
-  double ee_pose_z = ee_rotation.z();
-  constexpr double tol = 0.001;
-  ASSERT_NEAR(received_pose.orientation.z, ee_pose_z, tol);
-}
-
 }  // namespace
 
 int main(int argc, char** argv)

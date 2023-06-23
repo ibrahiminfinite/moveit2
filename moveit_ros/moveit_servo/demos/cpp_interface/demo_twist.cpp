@@ -80,7 +80,7 @@ int main(int argc, char* argv[])
   servo.expectedCommandType(CommandType::TWIST);
   // Move end effector in the +z direction at 10 cm/s
   // while turning around z axis in the +ve direction at 0.5 rad/s
-  Twist target_twist{ servo_params.ee_frame_name, { 0.0, 0.0, 0.1, 0.0, 0.0, 0.5 } };
+  Twist target_twist{ servo_params.ee_frame_name, { 0.0, 0.0, 0.0, 0.0, 0.0, 0.1 } };
   // Servo expects the command to be in planning frame, use the helper method to convert it.
   // If the command is already in planning frame, this step is not required.
   target_twist = servo.toPlanningFrame(target_twist);
@@ -91,6 +91,12 @@ int main(int argc, char* argv[])
   std::chrono::seconds timeout_duration(5);  // Apply the twist for 5 seconds.
   std::chrono::seconds time_elapsed(0);
   auto start_time = std::chrono::steady_clock::now();
+
+  Eigen::VectorXd current_positions(7);
+  auto robot_state = planning_scene_monitor->getStateMonitor()->getCurrentState();
+  auto joint_model_group = robot_state->getJointModelGroup(servo_params.move_group_name);
+  robot_state->copyJointGroupPositions(joint_model_group, current_positions);
+  RCLCPP_INFO_STREAM(LOGGER, std::endl << current_positions);
 
   RCLCPP_INFO_STREAM(LOGGER, servo.getStatusMessage());
   while (rclcpp::ok())
@@ -110,7 +116,12 @@ int main(int argc, char* argv[])
       trajectory_outgoing_cmd_pub->publish(composeTrajectoryMessage(servo_params, joint_state));
     }
     rate.sleep();
+    break;
   }
+
+  robot_state = planning_scene_monitor->getStateMonitor()->getCurrentState();
+  robot_state->copyJointGroupPositions(joint_model_group, current_positions);
+  RCLCPP_INFO_STREAM(LOGGER, std::endl << current_positions);
 
   RCLCPP_INFO(LOGGER, "Exiting demo.");
   rclcpp::shutdown();
