@@ -94,13 +94,12 @@ class ButterworthFilterPlugin : public SmoothingBaseClass
 public:
   /**
    * Initialize the smoothing algorithm
-   * @param node ROS node, used for parameter retrieval
+   * @param filter_coeff The filter coeff
    * @param robot_model typically used to retrieve vel/accel/jerk limits
    * @param num_joints number of actuated joints in the JointGroup Servo controls
    * @return True if initialization was successful
    */
-  bool initialize(rclcpp::Node::SharedPtr node, moveit::core::RobotModelConstPtr robot_model,
-                  size_t num_joints) override;
+  bool initialize(double filter_coeff, moveit::core::RobotModelConstPtr robot_model, size_t num_joints) override;
 
   /**
    * Smooth the command signals for all DOF

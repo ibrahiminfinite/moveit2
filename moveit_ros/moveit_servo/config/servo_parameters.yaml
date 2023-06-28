@@ -127,6 +127,15 @@ servo:
     description: "The name of the smoothing plugin to be used"
   }
 
+  smoothing_filter_coeff: {
+    type: double,
+    default_value: 1.5,
+    description: "Filter coefficient for the Butterworth filter",
+    validation: {
+      gt<>: 1.0
+    }
+  }
+
   is_primary_planning_scene_monitor: {
     type: bool,
     default_value: true,

@@ -66,8 +66,7 @@ public:
    * @param num_joints number of actuated joints in the JointGroup Servo controls
    * @return True if initialization was successful
    */
-  virtual bool initialize(rclcpp::Node::SharedPtr node, moveit::core::RobotModelConstPtr robot_model,
-                          size_t num_joints) = 0;
+  virtual bool initialize(double filter_coeff, moveit::core::RobotModelConstPtr robot_model, size_t num_joints) = 0;
 
   /**
    * Smooth an array of joint position deltas

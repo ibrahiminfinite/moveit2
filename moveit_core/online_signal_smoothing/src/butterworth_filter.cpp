@@ -45,7 +45,8 @@ namespace online_signal_smoothing
 namespace
 {
 constexpr double EPSILON = 1e-9;
-}
+const rclcpp::Logger LOGGER = rclcpp::get_logger("butterworth_filter");
+}  // namespace
 
 ButterworthFilter::ButterworthFilter(double low_pass_filter_coeff)
   : previous_measurements_{ 0., 0. }
@@ -95,16 +96,10 @@ void ButterworthFilter::reset(const double data)
   previous_filtered_measurement_ = data;
 }
 
-bool ButterworthFilterPlugin::initialize(rclcpp::Node::SharedPtr node, moveit::core::RobotModelConstPtr /* unused */,
+bool ButterworthFilterPlugin::initialize(double filter_coeff, moveit::core::RobotModelConstPtr /* unused */,
                                          size_t num_joints)
 {
-  node_ = node;
-  num_joints_ = num_joints;
-
-  online_signal_smoothing::ParamListener param_listener(node_);
-  double filter_coeff = param_listener.get_params().butterworth_filter_coeff;
-
-  for (std::size_t i = 0; i < num_joints_; ++i)
+  for (std::size_t i = 0; i < num_joints; ++i)
   {
     position_filters_.emplace_back(filter_coeff);
   }
@@ -115,11 +110,7 @@ bool ButterworthFilterPlugin::doSmoothing(std::vector<double>& position_vector)
 {
   if (position_vector.size() != position_filters_.size())
   {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-                          "Position vector to be smoothed does not have the right length.");
-#pragma GCC diagnostic pop
+    RCLCPP_ERROR(LOGGER, "Position vector to be smoothed does not have the right length.");
     return false;
   }
   for (size_t i = 0; i < position_vector.size(); ++i)
@@ -134,11 +125,7 @@ bool ButterworthFilterPlugin::reset(const std::vector<double>& joint_positions)
 {
   if (joint_positions.size() != position_filters_.size())
   {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-                          "Position vector to be reset does not have the right length.");
-#pragma GCC diagnostic pop
+    RCLCPP_ERROR(LOGGER, "Position vector to be reset does not have the right length.");
     return false;
   }
   for (size_t joint_idx = 0; joint_idx < joint_positions.size(); ++joint_idx)

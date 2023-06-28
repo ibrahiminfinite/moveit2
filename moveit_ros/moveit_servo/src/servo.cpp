@@ -291,7 +291,8 @@ void Servo::setSmoothingPlugin()
   }
 
   // Initialize the smoothing plugin
-  if (!smoother_->initialize(node_, planning_scene_monitor_->getRobotModel(), num_joints_))
+  if (!smoother_->initialize(servo_params_.smoothing_filter_coeff, planning_scene_monitor_->getRobotModel(),
+                             num_joints_))
   {
     RCLCPP_ERROR(LOGGER, "Smoothing plugin could not be initialized");
     std::exit(EXIT_FAILURE);
