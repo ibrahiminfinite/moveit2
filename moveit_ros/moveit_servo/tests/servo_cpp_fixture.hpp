@@ -59,8 +59,7 @@ protected:
 
     planning_scene_monitor_ = moveit_servo::createPlanningSceneMonitor(servo_test_node_, servo_params_);
 
-    servo_test_instance_ =
-        std::make_shared<moveit_servo::Servo>(servo_test_node_, servo_param_listener_, planning_scene_monitor_);
+    servo_test_instance_ = std::make_shared<moveit_servo::Servo>(servo_param_listener_, planning_scene_monitor_);
 
     robot_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
     joint_model_group_ = robot_state_->getJointModelGroup(servo_params_.move_group_name);

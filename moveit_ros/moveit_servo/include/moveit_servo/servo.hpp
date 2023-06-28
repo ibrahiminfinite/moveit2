@@ -67,7 +67,7 @@ namespace moveit_servo
 class Servo
 {
 public:
-  Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::ParamListener> servo_param_listener,
+  Servo(std::shared_ptr<const servo::ParamListener> servo_param_listener,
         const planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor);
 
   ~Servo();
@@ -123,12 +123,6 @@ private:
   Eigen::VectorXd jointDeltaFromCommand(const ServoInput& command);
 
   /**
-   * \brief Converts the given pose to planning frame.
-   * @param command The pose to be converted to planning frame.
-   */
-  Pose toPlanningFrame(const Pose& command);
-
-  /**
    * \brief Converts the given twist to planning frame.
    * @param command The twist to be converted to planning frame.
    */
@@ -167,7 +161,6 @@ private:
 
   // Variables
 
-  const rclcpp::Node::SharedPtr node_;
   // This needs to be threadsafe so it can be updated in realtime with Dynamic Reconfigure
   std::atomic<CommandType> expected_command_type_;
 
@@ -188,9 +181,6 @@ private:
   moveit::core::JointBoundsVector joint_bounds_;
 
   StatusCode servo_status_;
-
-  tf2_ros::Buffer transform_buffer_;
-  tf2_ros::TransformListener transform_listener_;
 };
 
 }  // namespace moveit_servo

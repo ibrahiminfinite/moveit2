@@ -50,13 +50,9 @@ const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.servo");
 namespace moveit_servo
 {
 
-Servo::Servo(const rclcpp::Node::SharedPtr& node, std::shared_ptr<const servo::ParamListener> servo_param_listener,
+Servo::Servo(std::shared_ptr<const servo::ParamListener> servo_param_listener,
              const planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor)
-  : node_(node)
-  , servo_param_listener_{ servo_param_listener }
-  , planning_scene_monitor_{ planning_scene_monitor }
-  , transform_buffer_(node_->get_clock())
-  , transform_listener_(transform_buffer_)
+  : servo_param_listener_{ servo_param_listener }, planning_scene_monitor_{ planning_scene_monitor }
 {
   servo_params_ = servo_param_listener_->get_params();
 
@@ -220,7 +216,7 @@ Eigen::VectorXd Servo::jointDeltaFromCommand(const ServoInput& command)
     }
     else if (expected_type == CommandType::POSE)
     {
-      delta_result = jointDeltaFromPose(toPlanningFrame(std::get<Pose>(command)), robot_state_, servo_params_);
+      delta_result = jointDeltaFromPose(std::get<Pose>(command), robot_state_, servo_params_);
       servo_status_ = delta_result.first;
     }
     if (servo_status_ != StatusCode::INVALID)
@@ -407,22 +403,6 @@ const Eigen::Isometry3d Servo::getEndEffectorPose()
   // Robot base (panda_link0) to end effector frame (panda_link8)
   robot_state_ = planning_scene_monitor_->getStateMonitor()->getCurrentState();
   return robot_state_->getGlobalLinkTransform(servo_params_.ee_frame);
-}
-
-Pose Servo::toPlanningFrame(const Pose& command)
-{
-  if (command.frame_id != servo_params_.planning_frame)
-  {
-    auto target_pose = convertIsometryToTransform(command.pose, servo_params_.planning_frame, command.frame_id);
-    auto command_to_planning_frame =
-        transform_buffer_.lookupTransform(servo_params_.planning_frame, command.frame_id, rclcpp::Time(0));
-    tf2::doTransform(target_pose, target_pose, command_to_planning_frame);
-    return Pose{ servo_params_.planning_frame, tf2::transformToEigen(target_pose) };
-  }
-  else
-  {
-    return command;
-  }
 }
 
 Twist Servo::toPlanningFrame(const Twist& command)

@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
 
   // Create the servo object
   auto planning_scene_monitor = createPlanningSceneMonitor(demo_node, servo_params);
-  auto servo = Servo(demo_node, servo_param_listener, planning_scene_monitor);
+  auto servo = Servo(servo_param_listener, planning_scene_monitor);
 
   // Wait for some time, so that the planning scene is loaded in rviz.
   // This is just for convenience, should not be used for sync in real application.
