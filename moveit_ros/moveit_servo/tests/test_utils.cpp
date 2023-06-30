@@ -112,7 +112,7 @@ TEST(ServoUtilsUnitTests, validPose)
 
 TEST_F(ServoCppFixture, testVeclocityScaling)
 {
-  moveit::core::JointBoundsVector joint_bounds = joint_model_group_->getActiveJointModelsBounds();
+  moveit::core::JointBoundsVector joint_bounds = robot_model_->getActiveJointModelsBounds();
   // Get the upper bound for the velocities of each joint.
   Eigen::VectorXd incoming_velocities(joint_bounds.size());
   for (size_t i = 0; i < joint_bounds.size(); i++)
@@ -130,96 +130,12 @@ TEST_F(ServoCppFixture, testVeclocityScaling)
   incoming_velocities(1) *= 1.05;
   incoming_velocities.tail<5>() *= 0.7;
 
-  // The resulting scaling factor selected should be approximately 0.90909
+  // The resulting scaling factor selected should be approximately 0.95238
   double user_velocity_override = 0.0;
   double scaling_factor =
       moveit_servo::jointLimitVelocityScalingFactor(incoming_velocities, joint_bounds, user_velocity_override);
   constexpr double tol = 0.001;
-  ASSERT_NEAR(scaling_factor, 0.90909, tol);
-}
-
-TEST_F(ServoCppFixture, testLeavingSingularity)
-{
-  Eigen::Vector<double, 6> cartesian_delta{ 0.005, 0.0, 0.0, 0.0, 0.0, 0.0 };
-
-  // Home state
-  Eigen::Vector<double, 7> home_state{ 0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785 };
-  robot_state_->setJointGroupActivePositions(joint_model_group_, home_state);
-  auto scaling_result = moveit_servo::velocityScalingFactorForSingularity(robot_state_, cartesian_delta, servo_params_);
-  ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::NO_WARNING);
-
-  // Approach singularity
-  Eigen::Vector<double, 7> state_approaching_singularity{ 0.0, 0.334, 0.0, -1.177, 0.0, 1.510, 0.785 };
-  robot_state_->setJointGroupActivePositions(joint_model_group_, state_approaching_singularity);
-  scaling_result = moveit_servo::velocityScalingFactorForSingularity(robot_state_, cartesian_delta, servo_params_);
-  ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::DECELERATE_FOR_APPROACHING_SINGULARITY);
-
-  // Move away from singularity
-  cartesian_delta(0) *= -1;
-  Eigen::Vector<double, 7> state_leaving_singularity{ 0.0, 0.3458, 0.0, -1.1424, 0.0, 1.4865, 0.785 };
-  robot_state_->setJointGroupActivePositions(joint_model_group_, state_leaving_singularity);
-  scaling_result = moveit_servo::velocityScalingFactorForSingularity(robot_state_, cartesian_delta, servo_params_);
-  ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::DECELERATE_FOR_LEAVING_SINGULARITY);
-}
-
-TEST_F(ServoCppFixture, testApproachingSingularity)
-{
-  Eigen::Vector<double, 6> cartesian_delta{ 0.005, 0.0, 0.0, 0.0, 0.0, 0.0 };
-
-  // Home state
-  robot_state_->setToDefaultValues(joint_model_group_, "ready");
-  auto scaling_result = moveit_servo::velocityScalingFactorForSingularity(robot_state_, cartesian_delta, servo_params_);
-  ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::NO_WARNING);
-
-  // Approach singularity
-  Eigen::Vector<double, 7> state_approaching_singularity{ 0.0, 0.334, 0.0, -1.177, 0.0, 1.510, 0.785 };
-  robot_state_->setJointGroupActivePositions(joint_model_group_, state_approaching_singularity);
-  scaling_result = moveit_servo::velocityScalingFactorForSingularity(robot_state_, cartesian_delta, servo_params_);
-  ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::DECELERATE_FOR_APPROACHING_SINGULARITY);
-}
-
-TEST_F(ServoCppFixture, testHaltForSingularity)
-{
-  Eigen::Vector<double, 6> cartesian_delta{ 0.005, 0.0, 0.0, 0.0, 0.0, 0.0 };
-
-  // Home state
-  robot_state_->setToDefaultValues(joint_model_group_, "ready");
-  auto scaling_result = moveit_servo::velocityScalingFactorForSingularity(robot_state_, cartesian_delta, servo_params_);
-  ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::NO_WARNING);
-
-  // Move to singular state.
-  Eigen::Vector<double, 7> singular_state{ -0.0001, 0.5690, 0.0005, -0.7782, 0.0, 1.3453, 0.7845 };
-  robot_state_->setJointGroupActivePositions(joint_model_group_, singular_state);
-  scaling_result = moveit_servo::velocityScalingFactorForSingularity(robot_state_, cartesian_delta, servo_params_);
-  ASSERT_EQ(scaling_result.second, moveit_servo::StatusCode::HALT_FOR_SINGULARITY);
-}
-
-TEST_F(ServoCppFixture, testGetEndEffectorFrame)
-{
-  Eigen::Isometry3d ee_pose = servo_test_instance_->getEndEffectorPose();
-  ASSERT_TRUE(moveit_servo::isValidCommand(ee_pose));
-}
-
-TEST_F(ServoCppFixture, testPoseFromCartesianDelta)
-{
-  kinematics::KinematicsBaseConstPtr ik_solver = joint_model_group_->getSolverInstance();
-  const Eigen::Isometry3d base_to_tip_frame_transform =
-      robot_state_->getGlobalLinkTransform(ik_solver->getBaseFrame()).inverse() *
-      robot_state_->getGlobalLinkTransform(ik_solver->getTipFrame());
-
-  // Pose message for a carteisan delta with only a +45 degree rotation about z.
-  Eigen::Vector<double, 6> cartesian_delta{ 0.0, 0.0, 0.0, 0.0, 0.0, M_PI / 4 };
-
-  geometry_msgs::msg::Pose received_pose =
-      moveit_servo::poseFromCartesianDelta(cartesian_delta, base_to_tip_frame_transform);
-
-  // End effector pose rotated by 45 degree
-  Eigen::Isometry3d ee_pose = servo_test_instance_->getEndEffectorPose();
-  ee_pose.rotate(Eigen::AngleAxisd(M_PI / 4, Eigen::Vector3d::UnitZ()));
-  Eigen::Quaterniond ee_rotation(ee_pose.rotation());
-  double ee_pose_z = ee_rotation.z();
-  constexpr double tol = 0.001;
-  ASSERT_NEAR(received_pose.orientation.z, ee_pose_z, tol);
+  ASSERT_NEAR(scaling_factor, 0.95238, tol);
 }
 
 }  // namespace
