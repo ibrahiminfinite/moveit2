@@ -54,20 +54,41 @@ ServoNode::ServoNode(const rclcpp::Node::SharedPtr& node) : node_(node)
   servo_params_ = servo_param_listener_->get_params();
 
   // Create Servo instance
-  servo_ = std::make_unique<Servo>(node_, servo_param_listener_, createPlanningSceneMonitor(node_, servo_params_));
+  planning_scene_monitor_ = createPlanningSceneMonitor(node_, servo_params_);
+  servo_ = std::make_unique<Servo>(node_, servo_param_listener_, planning_scene_monitor_);
 
   // Create subscriber for jointjog
   joint_jog_subscriber_ = node_->create_subscription<control_msgs::msg::JointJog>(
-      servo_params_.command_out_topic, 10,
+      servo_params_.joint_command_in_topic, 10,
       [this](const control_msgs::msg::JointJog::SharedPtr msg) { jointJogCallback(msg); });
 
+  twist_subscriber_ = node_->create_subscription<geometry_msgs::msg::TwistStamped>(
+      servo_params_.cartesian_command_in_topic, 10,
+      [this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) { twistCallback(msg); });
+
   new_joint_jog_ = false;
+  new_twist_ = false;
+
+  trajectory_publisher_ = node_->create_publisher<trajectory_msgs::msg::JointTrajectory>(
+      servo_params_.command_out_topic, rclcpp::SystemDefaultsQoS());
 }
 
 void ServoNode::jointJogCallback(const control_msgs::msg::JointJog::SharedPtr msg)
 {
+  servo_->expectedCommandType(CommandType::JOINT_JOG);
   latest_joint_jog_ = *msg;
   new_joint_jog_ = true;
+  Eigen::Map<Eigen::VectorXd> command(latest_joint_jog_.velocities.data(), latest_joint_jog_.velocities.size());
+  trajectory_publisher_->publish(composeTrajectoryMessage(servo_params_, servo_->getNextJointState(command)));
+}
+
+void ServoNode::twistCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg)
+{
+  servo_->expectedCommandType(CommandType::TWIST);
+  Eigen::Vector<double, 6> velocities{ msg->twist.linear.x,  msg->twist.linear.y,  msg->twist.linear.z,
+                                       msg->twist.angular.x, msg->twist.angular.y, msg->twist.angular.z };
+  Twist command{ servo_params_.planning_frame, velocities };
+  trajectory_publisher_->publish(composeTrajectoryMessage(servo_params_, servo_->getNextJointState(command)));
 }
 
 }  // namespace moveit_servo

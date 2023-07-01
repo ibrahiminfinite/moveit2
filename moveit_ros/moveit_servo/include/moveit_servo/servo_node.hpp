@@ -59,15 +59,21 @@ public:
 
 private:
   void jointJogCallback(const control_msgs::msg::JointJog::SharedPtr msg);
+  void twistCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
 
   const rclcpp::Node::SharedPtr node_;
   std::unique_ptr<Servo> servo_;
   std::shared_ptr<servo::ParamListener> servo_param_listener_;
   servo::Params servo_params_;
+  planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
 
-  std::atomic<bool> new_joint_jog_;
+  std::atomic<bool> new_joint_jog_, new_twist_;
   control_msgs::msg::JointJog latest_joint_jog_;
+  geometry_msgs::msg::TwistStamped latest_twist_;
   rclcpp::Subscription<control_msgs::msg::JointJog>::SharedPtr joint_jog_subscriber_;
+  rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr twist_subscriber_;
+
+  rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr trajectory_publisher_;
 };
 
 }  // namespace moveit_servo
