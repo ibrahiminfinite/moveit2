@@ -55,7 +55,9 @@ protected:
   {
     using moveit::core::loadTestingRobotModel;
     robot_model_ = loadTestingRobotModel("panda");
+    robot_state_ = std::make_shared<moveit::core::RobotState>(robot_model_);
   }
 
   moveit::core::RobotModelPtr robot_model_;
+  moveit::core::RobotStatePtr robot_state_;
 };
