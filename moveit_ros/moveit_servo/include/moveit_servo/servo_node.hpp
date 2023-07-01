@@ -45,9 +45,11 @@
 #include <control_msgs/msg/joint_jog.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_srvs/srv/set_bool.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 
 #include <moveit_servo/servo.hpp>
+#include <moveit_msgs/srv/servo_command_type.hpp>
 
 namespace moveit_servo
 {
@@ -57,11 +59,19 @@ class ServoNode
 public:
   ServoNode(const rclcpp::Node::SharedPtr& node);
 
+  ~ServoNode();
+
 private:
   void servoLoop();
 
   void jointJogCallback(const control_msgs::msg::JointJog::SharedPtr msg);
   void twistCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
+
+  void pauseServo(const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+                  const std::shared_ptr<std_srvs::srv::SetBool::Response> response);
+
+  void switchCommandType(const std::shared_ptr<moveit_msgs::srv::ServoCommandType::Request> request,
+                         const std::shared_ptr<moveit_msgs::srv::ServoCommandType::Response> response);
 
   const rclcpp::Node::SharedPtr node_;
   std::unique_ptr<Servo> servo_;
@@ -77,7 +87,12 @@ private:
 
   rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr trajectory_publisher_;
 
+  bool stop_servo_;
+  std::atomic<bool> servo_paused_;
   std::thread loop_thread_;
+
+  rclcpp::Service<moveit_msgs::srv::ServoCommandType>::SharedPtr switch_command_type_;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr pause_servo_;
 };
 
 }  // namespace moveit_servo

@@ -48,8 +48,21 @@ const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.servo_node");
 namespace moveit_servo
 {
 
+ServoNode::~ServoNode()
+{
+  stop_servo_ = true;
+  if (loop_thread_.joinable())
+    loop_thread_.join();
+}
+
 ServoNode::ServoNode(const rclcpp::Node::SharedPtr& node) : node_(node)
 {
+  // Used to break the servo loop thread automatically if exiting
+  stop_servo_ = false;
+  servo_paused_ = false;
+  new_joint_jog_ = false;
+  new_twist_ = false;
+
   servo_param_listener_ = std::make_shared<servo::ParamListener>(node_, "moveit_servo");
   servo_params_ = servo_param_listener_->get_params();
 
@@ -62,17 +75,47 @@ ServoNode::ServoNode(const rclcpp::Node::SharedPtr& node) : node_(node)
       servo_params_.joint_command_in_topic, 10,
       [this](const control_msgs::msg::JointJog::SharedPtr msg) { jointJogCallback(msg); });
 
+  // Create subscriber for twist
   twist_subscriber_ = node_->create_subscription<geometry_msgs::msg::TwistStamped>(
       servo_params_.cartesian_command_in_topic, 10,
       [this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) { twistCallback(msg); });
 
-  new_joint_jog_ = false;
-  new_twist_ = false;
-
   trajectory_publisher_ = node_->create_publisher<trajectory_msgs::msg::JointTrajectory>(
       servo_params_.command_out_topic, rclcpp::SystemDefaultsQoS());
 
+  // Create service to enable switching command type
+  switch_command_type_ = node_->create_service<moveit_msgs::srv::ServoCommandType>(
+      "moveit_servo/switch_command_type",
+      std::bind(&ServoNode::switchCommandType, this, std::placeholders::_1, std::placeholders::_2));
+
+  pause_servo_ = node_->create_service<std_srvs::srv::SetBool>("moveit_servo/pause_servo",
+                                                               std::bind(&ServoNode::pauseServo, this,
+                                                                         std::placeholders::_1, std::placeholders::_2));
+
   loop_thread_ = std::thread(&ServoNode::servoLoop, this);
+}
+
+void ServoNode::pauseServo(const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+                           const std::shared_ptr<std_srvs::srv::SetBool::Response> response)
+{
+  servo_paused_ = request->data;
+  response->success = true;
+  servo_paused_ ? response->message = "Servoing disabled" : response->message = "Servoing enabled";
+}
+
+void ServoNode::switchCommandType(const std::shared_ptr<moveit_msgs::srv::ServoCommandType::Request> request,
+                                  const std::shared_ptr<moveit_msgs::srv::ServoCommandType::Response> response)
+{
+  const bool is_valid = request->command_type >= 0 && request->command_type <= 2;
+  if (is_valid)
+  {
+    servo_->expectedCommandType(static_cast<CommandType>(request->command_type));
+    response->expected_type = static_cast<int8_t>(servo_->expectedCommandType());
+  }
+  else
+  {
+    RCLCPP_WARN_STREAM(LOGGER, "Unknown command type " << request->command_type << "requested");
+  }
 }
 
 void ServoNode::servoLoop()
@@ -80,10 +123,14 @@ void ServoNode::servoLoop()
   rclcpp::WallRate servo_rate(1 / servo_params_.publish_period);
   KinematicState next_joint_states(7);
   bool publish_command = false;
-  while (rclcpp::ok())
-  {
-    CommandType expectedType = servo_->expectedCommandType();
 
+  while (rclcpp::ok() && !stop_servo_)
+  {
+    // Skip processing if servoing is disabled.
+    if (servo_paused_)
+      continue;
+
+    CommandType expectedType = servo_->expectedCommandType();
     if (expectedType == CommandType::JOINT_JOG && new_joint_jog_)
     {
       servo_->expectedCommandType(CommandType::JOINT_JOG);
