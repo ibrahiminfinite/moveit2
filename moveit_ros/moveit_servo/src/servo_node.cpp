@@ -42,31 +42,43 @@
 
 namespace
 {
-    const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.servo_node");
+const rclcpp::Logger LOGGER = rclcpp::get_logger("moveit_servo.servo_node");
 }
 
 namespace moveit_servo
 {
 
-    ServoNode::ServoNode():Node("moveit_servo")
-    {
-        auto node = shared_from_this();
-        
-        servo_param_listener_ = std::make_shared<servo::ParamListener>(node, "moveit_servo");
-        servo_params_ = servo_param_listener_->get_params();
-        
-        // Create Servo instance
-        servo_ = std::make_unique<Servo>(node, servo_param_listener_, createPlanningSceneMonitor(node, servo_params_));
-    }
+ServoNode::ServoNode(const rclcpp::Node::SharedPtr& node) : node_(node)
+{
+  servo_param_listener_ = std::make_shared<servo::ParamListener>(node_, "moveit_servo");
+  servo_params_ = servo_param_listener_->get_params();
 
+  // Create Servo instance
+  servo_ = std::make_unique<Servo>(node_, servo_param_listener_, createPlanningSceneMonitor(node_, servo_params_));
+
+  // Create subscriber for jointjog
+  joint_jog_subscriber_ = node_->create_subscription<control_msgs::msg::JointJog>(
+      servo_params_.command_out_topic, 10,
+      [this](const control_msgs::msg::JointJog::SharedPtr msg) { jointJogCallback(msg); });
+
+  new_joint_jog_ = false;
 }
 
+void ServoNode::jointJogCallback(const control_msgs::msg::JointJog::SharedPtr msg)
+{
+  latest_joint_jog_ = *msg;
+  new_joint_jog_ = true;
+}
+
+}  // namespace moveit_servo
 
 int main(int argc, char* argv[])
 {
-    rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<moveit_servo::ServoNode>());
-    rclcpp::shutdown();
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<rclcpp::Node>("moveit_servo");
+  auto servo_node = std::make_unique<moveit_servo::ServoNode>(node);
+  rclcpp::spin(node);
+  rclcpp::shutdown();
 
-    return 0;
+  return 0;
 }

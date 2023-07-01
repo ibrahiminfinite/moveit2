@@ -102,6 +102,7 @@ install(
   demo_joint_jog
   demo_twist
   demo_pose
+  servo_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/moveit_servo

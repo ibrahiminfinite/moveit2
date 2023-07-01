@@ -52,19 +52,22 @@
 namespace moveit_servo
 {
 
-class ServoNode : public rclcpp::Node
+class ServoNode
 {
-
 public:
-
-    ServoNode();
+  ServoNode(const rclcpp::Node::SharedPtr& node);
 
 private:
+  void jointJogCallback(const control_msgs::msg::JointJog::SharedPtr msg);
 
-    std::unique_ptr<Servo> servo_;
-    std::shared_ptr<servo::ParamListener> servo_param_listener_;
-    servo::Params servo_params_;
+  const rclcpp::Node::SharedPtr node_;
+  std::unique_ptr<Servo> servo_;
+  std::shared_ptr<servo::ParamListener> servo_param_listener_;
+  servo::Params servo_params_;
 
+  std::atomic<bool> new_joint_jog_;
+  control_msgs::msg::JointJog latest_joint_jog_;
+  rclcpp::Subscription<control_msgs::msg::JointJog>::SharedPtr joint_jog_subscriber_;
 };
 
-}
+}  // namespace moveit_servo
