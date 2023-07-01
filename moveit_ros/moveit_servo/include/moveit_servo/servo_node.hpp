@@ -58,6 +58,8 @@ public:
   ServoNode(const rclcpp::Node::SharedPtr& node);
 
 private:
+  void servoLoop();
+
   void jointJogCallback(const control_msgs::msg::JointJog::SharedPtr msg);
   void twistCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
 
@@ -74,6 +76,8 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr twist_subscriber_;
 
   rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr trajectory_publisher_;
+
+  std::thread loop_thread_;
 };
 
 }  // namespace moveit_servo

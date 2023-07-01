@@ -71,24 +71,58 @@ ServoNode::ServoNode(const rclcpp::Node::SharedPtr& node) : node_(node)
 
   trajectory_publisher_ = node_->create_publisher<trajectory_msgs::msg::JointTrajectory>(
       servo_params_.command_out_topic, rclcpp::SystemDefaultsQoS());
+
+  loop_thread_ = std::thread(&ServoNode::servoLoop, this);
+}
+
+void ServoNode::servoLoop()
+{
+  rclcpp::WallRate servo_rate(1 / servo_params_.publish_period);
+  KinematicState next_joint_states(7);
+  bool publish_command = false;
+  while (rclcpp::ok())
+  {
+    CommandType expectedType = servo_->expectedCommandType();
+
+    if (expectedType == CommandType::JOINT_JOG && new_joint_jog_)
+    {
+      servo_->expectedCommandType(CommandType::JOINT_JOG);
+      Eigen::Map<Eigen::VectorXd> command(latest_joint_jog_.velocities.data(), latest_joint_jog_.velocities.size());
+      next_joint_states = servo_->getNextJointState(command);
+      publish_command = true;
+      new_joint_jog_ = false;
+    }
+    else if (expectedType == CommandType::TWIST && new_twist_)
+    {
+      Eigen::Vector<double, 6> velocities{ latest_twist_.twist.linear.x,  latest_twist_.twist.linear.y,
+                                           latest_twist_.twist.linear.z,  latest_twist_.twist.angular.x,
+                                           latest_twist_.twist.angular.y, latest_twist_.twist.angular.z };
+      Twist command{ servo_params_.planning_frame, velocities };
+      next_joint_states = servo_->getNextJointState(command);
+      publish_command = true;
+      new_twist_ = false;
+    }
+
+    if (publish_command)
+    {
+      trajectory_publisher_->publish(composeTrajectoryMessage(servo_params_, next_joint_states));
+      publish_command = false;
+    }
+  }
+
+  servo_rate.sleep();
 }
 
 void ServoNode::jointJogCallback(const control_msgs::msg::JointJog::SharedPtr msg)
 {
-  servo_->expectedCommandType(CommandType::JOINT_JOG);
   latest_joint_jog_ = *msg;
   new_joint_jog_ = true;
-  Eigen::Map<Eigen::VectorXd> command(latest_joint_jog_.velocities.data(), latest_joint_jog_.velocities.size());
-  trajectory_publisher_->publish(composeTrajectoryMessage(servo_params_, servo_->getNextJointState(command)));
 }
 
 void ServoNode::twistCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg)
 {
-  servo_->expectedCommandType(CommandType::TWIST);
-  Eigen::Vector<double, 6> velocities{ msg->twist.linear.x,  msg->twist.linear.y,  msg->twist.linear.z,
-                                       msg->twist.angular.x, msg->twist.angular.y, msg->twist.angular.z };
-  Twist command{ servo_params_.planning_frame, velocities };
-  trajectory_publisher_->publish(composeTrajectoryMessage(servo_params_, servo_->getNextJointState(command)));
+  latest_twist_ = *msg;
+  new_twist_ = true;
 }
 
 }  // namespace moveit_servo
