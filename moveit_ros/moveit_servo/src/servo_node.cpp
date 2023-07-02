@@ -62,6 +62,7 @@ ServoNode::ServoNode(const rclcpp::Node::SharedPtr& node) : node_(node)
   servo_paused_ = false;
   new_joint_jog_ = false;
   new_twist_ = false;
+  tacking_pose_ = false;
 
   servo_param_listener_ = std::make_shared<servo::ParamListener>(node_, "moveit_servo");
   servo_params_ = servo_param_listener_->get_params();
@@ -80,6 +81,11 @@ ServoNode::ServoNode(const rclcpp::Node::SharedPtr& node) : node_(node)
       servo_params_.cartesian_command_in_topic, 10,
       [this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) { twistCallback(msg); });
 
+  // Create subscriber for pose
+  pose_subscriber_ = node_->create_subscription<geometry_msgs::msg::PoseStamped>(
+      servo_params_.pose_command_in_topic, 10,
+      [this](const geometry_msgs::msg::PoseStamped::SharedPtr msg) { poseCallback(msg); });
+
   trajectory_publisher_ = node_->create_publisher<trajectory_msgs::msg::JointTrajectory>(
       servo_params_.command_out_topic, rclcpp::SystemDefaultsQoS());
 
@@ -92,7 +98,7 @@ ServoNode::ServoNode(const rclcpp::Node::SharedPtr& node) : node_(node)
                                                                std::bind(&ServoNode::pauseServo, this,
                                                                          std::placeholders::_1, std::placeholders::_2));
 
-  loop_thread_ = std::thread(&ServoNode::servoLoop, this);
+  loop_thread_ = std::thread(&ServoNode::ServoLoop, this);
 }
 
 void ServoNode::pauseServo(const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
@@ -118,7 +124,43 @@ void ServoNode::switchCommandType(const std::shared_ptr<moveit_msgs::srv::ServoC
   }
 }
 
-void ServoNode::servoLoop()
+void ServoNode::moveToPose()
+{
+  RCLCPP_INFO_STREAM(LOGGER, "Start tracking.." << latest_pose_.header.frame_id);
+  Pose command = servo_->toPlanningFrame(poseFromPoseStamped(latest_pose_));
+  rclcpp::WallRate tracking_frequency(50);
+  std::chrono::seconds timeout_duration(3);
+  std::chrono::seconds time_elapsed(0);
+  auto start_time = std::chrono::steady_clock::now();
+  KinematicState next_joint_states(7);
+  tacking_pose_ = true;
+  while (rclcpp::ok())
+  {
+    next_joint_states = servo_->getNextJointState(command);
+    StatusCode status = servo_->getStatus();
+    auto current_time = std::chrono::steady_clock::now();
+    time_elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time);
+
+    if (time_elapsed > timeout_duration)
+    {
+      RCLCPP_INFO_STREAM(LOGGER, "Timed out while tracking.");
+      break;
+    }
+    else if (status == StatusCode::POSE_ACHIEVED or status == StatusCode::INVALID)
+    {
+      RCLCPP_INFO_STREAM(LOGGER, servo_->getStatusMessage());
+      tacking_pose_ = false;
+      break;
+    }
+    else
+    {
+      trajectory_publisher_->publish(composeTrajectoryMessage(servo_params_, next_joint_states));
+    }
+    tracking_frequency.sleep();
+  }
+}
+
+void ServoNode::ServoLoop()
 {
   rclcpp::WallRate servo_rate(1 / servo_params_.publish_period);
   KinematicState next_joint_states(7);
@@ -150,6 +192,16 @@ void ServoNode::servoLoop()
       new_twist_ = false;
     }
 
+    else if (!tacking_pose_ && expectedType == CommandType::POSE && new_pose_)
+    {
+      new_pose_ = false;
+      RCLCPP_INFO(LOGGER, "POSE RECEIVED");
+      if (pose_tracking_thread_.joinable())
+        pose_tracking_thread_.join();
+      pose_tracking_thread_ = std::thread(&ServoNode::moveToPose, this);
+      RCLCPP_INFO(LOGGER, "TRACKING DONE");
+    }
+
     if (publish_command)
     {
       trajectory_publisher_->publish(composeTrajectoryMessage(servo_params_, next_joint_states));
@@ -170,6 +222,12 @@ void ServoNode::twistCallback(const geometry_msgs::msg::TwistStamped::SharedPtr 
 {
   latest_twist_ = *msg;
   new_twist_ = true;
+}
+
+void ServoNode::poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
+{
+  latest_pose_ = *msg;
+  new_pose_ = true;
 }
 
 }  // namespace moveit_servo

@@ -44,6 +44,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <control_msgs/msg/joint_jog.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
@@ -62,10 +63,13 @@ public:
   ~ServoNode();
 
 private:
-  void servoLoop();
+  void ServoLoop();
+
+  void moveToPose();
 
   void jointJogCallback(const control_msgs::msg::JointJog::SharedPtr msg);
   void twistCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
+  void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
 
   void pauseServo(const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
                   const std::shared_ptr<std_srvs::srv::SetBool::Response> response);
@@ -79,17 +83,21 @@ private:
   servo::Params servo_params_;
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
 
-  std::atomic<bool> new_joint_jog_, new_twist_;
+  std::atomic<bool> new_joint_jog_, new_twist_, new_pose_;
   control_msgs::msg::JointJog latest_joint_jog_;
   geometry_msgs::msg::TwistStamped latest_twist_;
+  geometry_msgs::msg::PoseStamped latest_pose_;
   rclcpp::Subscription<control_msgs::msg::JointJog>::SharedPtr joint_jog_subscriber_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr twist_subscriber_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_subscriber_;
 
   rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr trajectory_publisher_;
 
   bool stop_servo_;
   std::atomic<bool> servo_paused_;
+  std::atomic<bool> tacking_pose_;
   std::thread loop_thread_;
+  std::thread pose_tracking_thread_;
 
   rclcpp::Service<moveit_msgs::srv::ServoCommandType>::SharedPtr switch_command_type_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr pause_servo_;
