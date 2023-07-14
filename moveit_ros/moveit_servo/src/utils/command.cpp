@@ -127,7 +127,6 @@ JointDeltaResult jointDeltaFromPose(const Pose& command, moveit::core::RobotStat
   const bool valid_command = isValidCommand(command);
   const bool is_planning_frame = command.frame_id == servo_params.planning_frame;
 
-
   if (valid_command && is_planning_frame)
   {
     Eigen::Vector<double, 6> cartesian_position_delta;

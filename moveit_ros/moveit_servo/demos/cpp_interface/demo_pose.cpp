@@ -39,6 +39,8 @@
  */
 
 #include <chrono>
+#include <atomic>
+#include <mutex>
 #include <rclcpp/rclcpp.hpp>
 #include <moveit_servo/servo.hpp>
 #include <moveit_servo/utils/common.hpp>
@@ -75,43 +77,24 @@ int main(int argc, char* argv[])
   // This is just for convenience, should not be used for sync in real application.
   std::this_thread::sleep_for(std::chrono::seconds(3));
 
-  // The tracking tolerances are set using the parameters
-  // 1. pose_tracking.linear_tolerance (default 0.001 m)
-  // 2. pose_tracking.angular_tolerance (default 0.01 rad)
+  Pose target_pose;
+  std::mutex pose_guard;
+  std::atomic<bool> stop_tracking = false;
 
-  // Compute the next joint state needed to move to target pose.
-  // Send the joint state to your controller.
-  // Since the panda robot uses the JointTrajectoryController, we convert it to
-  // trajectory message and publish it to the relevant topic.
-
-  // Since the same set of operations are applied for both example poses we make it into a lambda that captures by reference.
-  auto move_to_pose = [&](const auto& target_pose) {
-    rclcpp::WallRate command_rate(50);
-    std::chrono::seconds timeout_duration(5);
-    std::chrono::seconds time_elapsed(0);
-    auto start_time = std::chrono::steady_clock::now();
-    while (rclcpp::ok())
+  auto pose_tracker = [&]() {
+    KinematicState joint_state;
+    rclcpp::WallRate tracking_rate(1 / servo_params.publish_period);
+    while (!stop_tracking)
     {
-      KinematicState joint_state = servo.getNextJointState(target_pose);
+      {
+        std::lock_guard<std::mutex> pguard(pose_guard);
+        joint_state = servo.getNextJointState(target_pose);
+      }
       StatusCode status = servo.getStatus();
-
-      auto current_time = std::chrono::steady_clock::now();
-      time_elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time);
-      if (time_elapsed > timeout_duration)
-      {
-        RCLCPP_INFO_STREAM(LOGGER, "Timed out while tracking.");
-        break;
-      }
-      else if (status == StatusCode::POSE_ACHIEVED or status == StatusCode::INVALID)
-      {
-        RCLCPP_INFO_STREAM(LOGGER, servo.getStatusMessage());
-        break;
-      }
-      else
-      {
+      if (status != StatusCode::INVALID)
         trajectory_outgoing_cmd_pub->publish(composeTrajectoryMessage(servo_params, joint_state));
-      }
-      command_rate.sleep();
+
+      tracking_rate.sleep();
     }
   };
 
@@ -119,18 +102,35 @@ int main(int argc, char* argv[])
   servo.expectedCommandType(CommandType::POSE);
   RCLCPP_INFO_STREAM(LOGGER, servo.getStatusMessage());
 
-  {
-    Pose target_pose_planning_frame;
-    target_pose_planning_frame.frame_id = servo_params.planning_frame;
-    // Set position to 10 cm in +z direction from current ee frame position in planning frame.
-    target_pose_planning_frame.pose = servo.getEndEffectorPose();
-    target_pose_planning_frame.pose.translate(Eigen::Vector3d(0.0, 0.0, -0.1));
-    // Set angle to 45 degree from current angle about z, in planning frame.
-    target_pose_planning_frame.pose.rotate(Eigen::AngleAxisd(-M_PI / 4, Eigen::Vector3d::UnitZ()));
+  target_pose.frame_id = servo_params.planning_frame;
+  // Set position to 10 cm in +z direction from current ee frame position in planning frame.
+  target_pose.pose = servo.getEndEffectorPose();
 
-    move_to_pose(target_pose_planning_frame);
+  Eigen::Isometry3d target = target_pose.pose;
+  target.translate(Eigen::Vector3d(0.0, 0.0, -0.1));
+  std::thread tracker_thread(pose_tracker);
+  tracker_thread.detach();
+
+  const double delta = 0.002;
+  rclcpp::WallRate command_rate(50);
+
+  // Can optionally add a timeout to exit the tracking thread.
+  while (!stop_tracking)
+  {
+    {
+      std::lock_guard<std::mutex> pguard(pose_guard);
+      target_pose.pose = servo.getEndEffectorPose();
+      stop_tracking = target_pose.pose.isApprox(target, servo_params.pose_tracking.linear_tolerance);
+      target_pose.pose.translate(Eigen::Vector3d(0.0, 0.0, -delta));
+    }
+
+    command_rate.sleep();
   }
 
+  RCLCPP_INFO_STREAM(LOGGER, "REACHED : " << stop_tracking);
+  stop_tracking = true;
+
+  command_rate.sleep();
   RCLCPP_INFO(LOGGER, "Exiting demo.");
   rclcpp::shutdown();
 }
